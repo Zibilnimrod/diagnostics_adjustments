@@ -124,6 +124,8 @@ def main(argv: list[str] | None = None) -> int:
         ]
         if needs_review:
             log(f"  [{result.folder_name}] review by hand: {', '.join(needs_review)}")
+        for name, count in result.duplicate_names.items():
+            log(f"  [{result.folder_name}] merge by hand: {count} rows for {name}")
     if failures:
         print(f"\n{len(failures)} file(s) failed:", file=sys.stderr)
         for folder_name, (filename, error) in failures:

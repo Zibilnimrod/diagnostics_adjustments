@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import Settings, resolve_api_key
@@ -20,8 +20,36 @@ class ClassResult:
     folder_name: str
     records: list[StudentRecord]
     failures: list[tuple[str, str]]  # (filename, error)
+    # {name: count} for children with more than one diagnostic file — kept as
+    # separate rows for the teacher to merge by hand.
+    duplicate_names: dict[str, int] = field(default_factory=dict)
     docx_path: Path | None = None
     json_path: Path | None = None
+
+
+def group_by_student(
+    records: list[StudentRecord],
+) -> tuple[list[StudentRecord], dict[str, int]]:
+    """Put rows for the same child next to each other.
+
+    Two diagnostic files for one child (e.g. a didactic eval and a neurological
+    eval) each become their own row — we don't merge them, since merging across
+    documents is error-prone and the teacher wants to do it by hand. But we keep
+    those rows adjacent so they're easy to find and merge, and report which names
+    are duplicated. First-appearance order is otherwise preserved.
+    """
+    order: list[str] = []
+    groups: dict[str, list[StudentRecord]] = {}
+    for record in records:
+        key = record.student_name.strip()
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(record)
+
+    grouped = [record for key in order for record in groups[key]]
+    duplicates = {key: len(groups[key]) for key in order if len(groups[key]) > 1}
+    return grouped, duplicates
 
 
 @dataclass
@@ -140,7 +168,17 @@ class Pipeline:
                 note = f"  (missing: {', '.join(record.missing_info)})"
             self.log(f"      -> {record.student_name} [{record.confidence}]{note}")
 
-        result = ClassResult(folder_name=folder.name, records=records, failures=failures)
+        # Keep same-child rows adjacent so multiple diagnostics are easy to merge.
+        records, duplicates = group_by_student(records)
+        for name, count in duplicates.items():
+            self.log(f"   ! {count} diagnostic files for {name} — adjacent rows, merge by hand")
+
+        result = ClassResult(
+            folder_name=folder.name,
+            records=records,
+            failures=failures,
+            duplicate_names=duplicates,
+        )
 
         # ".records.json" rather than plain ".json" so the extracted student data
         # is ignorable by pattern wherever -o points. See .gitignore.

@@ -184,6 +184,27 @@ Delete `.cache/` to reset. `--no-cache` bypasses both local layers.
 4. **Rendering** (`src/docx_writer.py`) — landscape RTL table matching the
    existing tables in `inputs/adjustments`.
 
+## Two diagnostics for one child
+
+A child sometimes has more than one diagnostic file — say a didactic evaluation
+and a neurological one. Each file becomes its **own row**; the program does not
+merge them, because merging across documents is error-prone and you'd rather do
+it by hand. To make that easy:
+
+- the rows for the same child are placed **adjacent** in the table, so you don't
+  have to hunt for them, and
+- the run flags them:
+
+  ```text
+  [ד1] merge by hand: 2 rows for נעם ברק
+  ```
+
+Merge the adjacent rows in Word — typically by stacking both entries in the
+`סוג האבחון` column (newline-separated), the way the sample tables do.
+
+Matching is by the extracted name, so if the same child's name is spelled
+differently across two diagnostics, the rows may not group — check the flag list.
+
 ## Reviewing the output
 
 **The tables need a human pass before use.** The run prints which students to
