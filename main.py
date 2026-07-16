@@ -50,8 +50,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Model effort level (default: high)",
     )
     parser.add_argument(
-        "--ocr-engine", default="claude", choices=["claude", "tesseract", "none"],
-        help="Engine for pages with no text layer (default: claude)",
+        "--ocr-engine", default="tesseract", choices=["tesseract", "claude", "none"],
+        help="Engine for pages with no text layer (default: tesseract, local at C:\\T_OCR)",
     )
     parser.add_argument(
         "--max-pages", type=int, default=12,

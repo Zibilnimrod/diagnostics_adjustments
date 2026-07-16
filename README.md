@@ -51,7 +51,7 @@ output/
 | `--year תשפז` | School year in the output filename (default `תשפו`) |
 | `--json-only` | Extract the data but skip writing `.docx` |
 | `--max-pages 12` | Pages per diagnostic sent to the model |
-| `--ocr-engine` | `claude` (default), `tesseract`, or `none` |
+| `--ocr-engine` | `tesseract` (default, local), `claude`, or `none` |
 | `--no-cache` | Ignore the local cache and re-do everything |
 | `--keep-console-font` | Don't touch the console font (see below) |
 | `--no-bidi` | Don't reorder Hebrew for display (if it looks reversed) |
@@ -124,6 +124,20 @@ nowhere else:
 Use `--no-bidi` if your terminal *does* handle bidi (Windows Terminal, most
 IDEs), where reordering would double-reverse it.
 
+## Progress while it runs
+
+Two steps are slow and were previously silent, so a run looked hung:
+
+- **The model call** — 15-60s per student at high effort. A `querying model`
+  spinner with an elapsed-seconds counter shows on screen during the wait
+  (`querying model | 23s`), then clears.
+- **OCR** — a couple of seconds per page. Each page is announced
+  (`OCR page 3 (3/8)`).
+
+Both animate only on a real terminal; when output is redirected to a file they
+print a single static line instead of carriage-return spam. A student served
+from the local cache skips the model call entirely, so no spinner appears.
+
 ## Caching
 
 Two layers, both on by default. Re-running a class after tweaking the output is
@@ -156,7 +170,10 @@ Delete `.cache/` to reset. `--no-cache` bypasses both local layers.
 
 1. **Text extraction** (`src/text_extract.py`) — reads the PDF's text layer, and
    OCRs only the pages that come back empty, via the shared OCR library at
-   `C:\work\common_infrastructures\ocr`. Page text is cached under `.cache/`.
+   `C:\work\common_infrastructures\ocr`. OCR defaults to **local Tesseract**
+   at `C:\T_OCR` — no tokens, no network. Pass `--ocr-engine claude` to use the
+   vision API instead (better on rotated or low-quality scans), or `none` to
+   skip OCR. Page text is cached under `.cache/`.
 2. **Page selection** (`src/relevance.py`) — a diagnostic runs 15–30 pages, but
    the table only needs the identity header and the `סיכום והמלצות` block. Pages
    are scored on section headings and penalised for being mostly score tables;

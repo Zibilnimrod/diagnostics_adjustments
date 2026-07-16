@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from .cache import JsonDiskCache, make_key
 from .config import Settings
+from .progress import Spinner
 
 
 class StudentRecord(BaseModel):
@@ -181,32 +182,35 @@ class RecordExtractor:
         if cached is not None:
             return StudentRecord(**cached), CallStats(cached=True)
 
-        response = self.client.messages.parse(
-            model=self.settings.model,
-            max_tokens=self.settings.max_tokens,
-            output_config={"effort": self.settings.effort},
-            system=[
-                {
-                    "type": "text",
-                    "text": SYSTEM_PROMPT,
-                    # The system prompt is the only part identical across
-                    # students, so it is the whole cacheable prefix. Every
-                    # student after the first in a run reads it back.
-                    "cache_control": {"type": "ephemeral", "ttl": "1h"},
-                }
-            ],
-            messages=[
-                {
-                    "role": "user",
-                    "content": USER_TEMPLATE.format(
-                        class_hint=class_hint,
-                        filename=filename,
-                        excerpt=excerpt,
-                    ),
-                }
-            ],
-            output_format=StudentRecord,
-        )
+        # This is the long, silent wait — 15-60s at high effort. The spinner
+        # keeps an elapsed counter on screen so the run doesn't look hung.
+        with Spinner("      querying model"):
+            response = self.client.messages.parse(
+                model=self.settings.model,
+                max_tokens=self.settings.max_tokens,
+                output_config={"effort": self.settings.effort},
+                system=[
+                    {
+                        "type": "text",
+                        "text": SYSTEM_PROMPT,
+                        # The system prompt is the only part identical across
+                        # students, so it is the whole cacheable prefix. Every
+                        # student after the first in a run reads it back.
+                        "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                    }
+                ],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": USER_TEMPLATE.format(
+                            class_hint=class_hint,
+                            filename=filename,
+                            excerpt=excerpt,
+                        ),
+                    }
+                ],
+                output_format=StudentRecord,
+            )
 
         if response.stop_reason == "refusal":
             raise RuntimeError(f"Model declined to process {filename}")

@@ -85,10 +85,18 @@ class PageTextExtractor:
             self._processor = PdfOcr(engine)
         return self._processor
 
-    def _ocr_pages(self, pdf_path: Path, indices: list[int]) -> dict[int, str]:
+    def _ocr_pages(
+        self, pdf_path: Path, indices: list[int], log=print
+    ) -> dict[int, str]:
         processor = self._get_processor()
         results: dict[int, str] = {}
-        for page_num, image in processor.iter_pages(pdf_path, indices):
+        total = len(indices)
+        # Tesseract runs a couple of seconds per page, so announce each one —
+        # a silent multi-page OCR looks exactly like a hang.
+        for done, (page_num, image) in enumerate(
+            processor.iter_pages(pdf_path, indices), 1
+        ):
+            log(f"      OCR page {page_num} ({done}/{total})")
             results[page_num - 1] = processor.engine.ocr_page(image)
         return results
 
@@ -109,9 +117,10 @@ class PageTextExtractor:
 
         weak = [i for i, text in enumerate(pages) if len(text.strip()) < self.min_native_chars]
         if weak and self.ocr_engine != "none":
-            log(f"      OCR ({self.ocr_engine}) for {len(weak)} image-only page(s)")
+            where = " (local C:\\T_OCR)" if self.ocr_engine == "tesseract" else ""
+            log(f"      {self.ocr_engine} OCR{where} on {len(weak)} image-only page(s)")
             try:
-                for index, text in self._ocr_pages(pdf_path, weak).items():
+                for index, text in self._ocr_pages(pdf_path, weak, log=log).items():
                     pages[index] = text
             except Exception as exc:  # OCR is best-effort; native text still stands
                 log(f"      OCR failed ({exc}); continuing with the text layer only")

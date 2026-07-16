@@ -32,7 +32,8 @@ class Settings:
     model: str = DEFAULT_MODEL
     effort: str = "high"
     max_tokens: int = 8000
-    ocr_engine: str = "claude"      # claude | tesseract | none
+    # Local Tesseract (C:\T_OCR) by default — no tokens, no network for scans.
+    ocr_engine: str = "tesseract"   # tesseract | claude | none
     ocr_dpi: int = 300
     max_pages: int = 12             # relevant pages sent to the model per student
     min_native_chars: int = 40      # below this a page counts as image-only
