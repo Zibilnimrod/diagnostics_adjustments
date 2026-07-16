@@ -3,5 +3,9 @@ pydantic>=2.7
 python-docx>=1.1
 PyMuPDF>=1.24
 Pillow>=10.0
+# Optional: reorders Hebrew for Windows consoles, which don't do bidi.
+# Without it the program runs fine, but console Hebrew reads reversed.
+python-bidi>=0.4.2
+
 # Only needed when --ocr-engine tesseract is used:
 pytesseract>=0.3.10

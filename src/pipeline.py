@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import Settings, resolve_api_key
+from .console import log as console_log
 from .docx_writer import build_class_document
 from .extractor import CallStats, RecordExtractor, StudentRecord
 from .relevance import build_excerpt, select_relevant_pages
@@ -71,7 +72,7 @@ class RunTotals:
 
 
 class Pipeline:
-    def __init__(self, settings: Settings, log=print):
+    def __init__(self, settings: Settings, log=console_log):
         self.settings = settings
         self.log = log
         self.totals = RunTotals()

@@ -13,6 +13,16 @@ Two separate problems, both of which have to be fixed or Hebrew is unusable:
    glyphs, so Hebrew renders as boxes even once the encoding is right. We switch
    the font to one that covers Hebrew. This affects the current console window
    only — it is not a persistent system change.
+
+3. **Direction.** The Windows console paints characters in memory order and does
+   not implement the Unicode bidi algorithm, so Hebrew comes out reversed. If
+   python-bidi is installed we reorder log lines to visual order on the way out.
+
+   This is a **display-only** transform, and deliberately narrow: it is applied
+   by `log()` alone. The .docx, the JSON, the filenames, and the text sent to
+   the API all keep logical order — reordering any of those would corrupt them.
+   It is also skipped when stdout is redirected to a file, where logical order
+   is what a text editor expects.
 """
 
 from __future__ import annotations
@@ -90,10 +100,53 @@ def _fix_font() -> bool:
         return False
 
 
-def setup_console(fix_font: bool = True) -> None:
+# Set by setup_console(); log() is a no-op transform until then.
+_reorder_for_display = False
+
+
+def _bidi_available() -> bool:
+    try:
+        import bidi.algorithm  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _should_reorder() -> bool:
+    """Only reorder for a real Windows console that won't do bidi itself."""
+    if sys.platform != "win32" or not _bidi_available():
+        return False
+    try:
+        return sys.stdout.isatty()  # False when piped/redirected to a file.
+    except (AttributeError, ValueError):
+        return False
+
+
+def display(text: str) -> str:
+    """Logical order -> visual order, for a console that can't do bidi itself."""
+    if not _reorder_for_display or not text:
+        return text
+    from bidi.algorithm import get_display
+
+    # base_dir="L" keeps the line's LTR skeleton — indentation, "->", "[high]",
+    # page numbers — where it belongs, and reorders only the Hebrew runs.
+    try:
+        return get_display(text, base_dir="L")
+    except Exception:
+        return text  # Never let a cosmetic transform break a run.
+
+
+def log(message: str = "") -> None:
+    """print() for anything that may contain Hebrew."""
+    print(display(str(message)))
+
+
+def setup_console(fix_font: bool = True, reorder_hebrew: bool = True) -> None:
     """Prepare the console for Hebrew output. Safe to call on any platform."""
+    global _reorder_for_display
     if sys.platform == "win32":
         _fix_codepage()
         if fix_font:
             _fix_font()
     _fix_stream_encoding()
+    _reorder_for_display = reorder_hebrew and _should_reorder()

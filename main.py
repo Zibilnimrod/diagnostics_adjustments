@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from src.config import DEFAULT_MODEL, Settings
-from src.console import setup_console
+from src.console import log, setup_console
 from src.pipeline import Pipeline
 
 
@@ -68,6 +68,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--keep-console-font", action="store_true",
         help="Don't switch the console font (Hebrew may show as boxes)",
     )
+    parser.add_argument(
+        "--no-bidi", action="store_true",
+        help="Don't reorder Hebrew for display (use if console text looks reversed)",
+    )
     return parser.parse_args(argv)
 
 
@@ -75,7 +79,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     # Must happen before anything prints Hebrew: a default Windows console is on
     # codepage 862 with a font that has no Hebrew glyphs.
-    setup_console(fix_font=not args.keep_console_font)
+    setup_console(
+        fix_font=not args.keep_console_font,
+        reorder_hebrew=not args.no_bidi,
+    )
 
     if not args.input_dir.is_dir():
         print(f"Input directory not found: {args.input_dir}", file=sys.stderr)
@@ -116,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
             r.student_name for r in result.records if r.confidence != "high" or r.missing_info
         ]
         if needs_review:
-            print(f"  [{result.folder_name}] review by hand: {', '.join(needs_review)}")
+            log(f"  [{result.folder_name}] review by hand: {', '.join(needs_review)}")
     if failures:
         print(f"\n{len(failures)} file(s) failed:", file=sys.stderr)
         for folder_name, (filename, error) in failures:

@@ -54,6 +54,7 @@ output/
 | `--ocr-engine` | `claude` (default), `tesseract`, or `none` |
 | `--no-cache` | Ignore the local cache and re-do everything |
 | `--keep-console-font` | Don't touch the console font (see below) |
+| `--no-bidi` | Don't reorder Hebrew for display (if it looks reversed) |
 
 ## Teacher names
 
@@ -104,10 +105,24 @@ diagnostic text is full of — which crashed runs part-way through with
 The font change applies to the current console window only — it is not a
 persistent system setting. Use `--keep-console-font` to skip step 3.
 
-Note that the Windows console does not reorder bidirectional text, so Hebrew
-prints in logical order and reads right-to-left within each line. That is a
-console limitation and affects the log only — the generated `.docx` is correct.
-Windows Terminal renders this better than `cmd.exe` if you have the choice.
+### Reading direction
+
+The console also paints characters in memory order rather than applying the
+Unicode bidi algorithm, so Hebrew comes out reversed (`יאיר גולן` as `ןלוג ריאי`).
+If **python-bidi** is installed, log lines are reordered to visual order on the
+way out and read correctly.
+
+This is display-only, and deliberately narrow — it happens in `log()` and
+nowhere else:
+
+| | Order |
+|---|---|
+| Console log | visual (so `cmd.exe` reads correctly) |
+| `.docx`, `.json`, filenames, text sent to the API | logical (untouched) |
+| Output redirected to a file (`> run.log`) | logical (what an editor expects) |
+
+Use `--no-bidi` if your terminal *does* handle bidi (Windows Terminal, most
+IDEs), where reordering would double-reverse it.
 
 ## Caching
 
