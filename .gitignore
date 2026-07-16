@@ -242,6 +242,17 @@ out2/
 xxxx/
 out_real/
 
+# Staging area for new diagnostics before they're sorted into classes.
+real_new_diag/
+
+# No PDF or image in this repo is anything but a diagnostic or a scan of one.
+# Blanket rules, same reasoning as *.docx above — belt and braces against a
+# stray folder or a `git add -A`.
+*.pdf
+*.jpg
+*.jpeg
+*.png
+
 # Cached page text and model results — plain-text diagnostic content.
 .cache/
 
