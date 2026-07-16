@@ -216,3 +216,25 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# Student data. Diagnostics, and the tables generated from them, contain
+# children's personal and medical information. None of it belongs in git.
+# ---------------------------------------------------------------------------
+
+# Default input/output locations.
+inputs/
+output/
+
+# `-o` can point anywhere, so also ignore the generated artefacts by name —
+# a stray output folder can't leak a table just because it isn't listed here.
+טבלת התאמות*.docx
+*.records.json
+
+# Output folders from ad-hoc runs.
+out2/
+xxxx/
+
+# Cached page text and model results — plain-text diagnostic content.
+.cache/
+

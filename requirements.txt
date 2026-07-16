@@ -1,0 +1,7 @@
+anthropic>=0.69
+pydantic>=2.7
+python-docx>=1.1
+PyMuPDF>=1.24
+Pillow>=10.0
+# Only needed when --ocr-engine tesseract is used:
+pytesseract>=0.3.10
