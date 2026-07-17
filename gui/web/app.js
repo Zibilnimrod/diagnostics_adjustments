@@ -4,6 +4,10 @@
 
 'use strict';
 
+// Bump on every UI change. Shown in the header so we can confirm, from a
+// screenshot, exactly which version is running (stale files are the #1 gotcha).
+const BUILD = 7;
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const api = () => window.pywebview.api;
 
@@ -33,6 +37,8 @@ setTimeout(() => {
 async function init() {
   if (init.done) return;
   init.done = true;
+  console.log('GUI build', BUILD);
+  const b = $('#build'); if (b) b.textContent = 'v' + BUILD;
   try {
     bindChrome();
     await refresh();
