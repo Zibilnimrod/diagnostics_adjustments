@@ -6,7 +6,7 @@
 
 // Bump on every UI change. Shown in the header so we can confirm, from a
 // screenshot, exactly which version is running (stale files are the #1 gotcha).
-const BUILD = 8;
+const BUILD = 9;
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const api = () => window.pywebview.api;
@@ -104,12 +104,13 @@ function renderCard(c, index) {
   card.addEventListener('dragenter', e => { e.preventDefault(); hoverClass = c.name; card.classList.add('drag'); });
   card.addEventListener('dragover', e => { e.preventDefault(); });
   card.addEventListener('dragleave', e => { if (!card.contains(e.relatedTarget)) card.classList.remove('drag'); });
-  card.addEventListener('drop', async e => {
+  card.addEventListener('drop', e => {
     e.preventDefault();
     card.classList.remove('drag');
-    const paths = extractPaths(e);
-    if (paths.length) await addInto(c.name, paths);
-    else pickInto(c.name);   // paths not exposed by the webview → open picker
+    // Real file paths are resolved by the Python drop handler, which calls
+    // window.onFilesDropped(); it routes to whichever card is under the cursor
+    // (tracked via hoverClass). Nothing to do here but keep hoverClass current.
+    hoverClass = c.name;
   });
 
   return card;

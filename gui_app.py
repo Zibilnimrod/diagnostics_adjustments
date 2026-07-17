@@ -43,12 +43,17 @@ def build_api() -> Api:
     return Api(paths, settings)
 
 
-def _wire_native_drag_drop(window, api: Api) -> None:
-    """Best-effort: let files dragged from Explorer resolve to real paths.
+def _wire_native_drag_drop(window) -> None:
+    """Let files dragged from Explorer resolve to real filesystem paths.
 
-    pywebview only exposes dropped-file paths through a Python-side DOM handler,
-    so we attach one to the document. If the binding isn't available in this
-    pywebview build it fails quietly — the click-to-pick path still works.
+    WebView2 supports native file drop, but pywebview only resolves the real
+    path when a DOM 'drop' listener is registered, and delivers it to this
+    Python handler (never to browser JS). So we register the handler here,
+    pull `pywebviewFullPath` off the dropped files, and hand the paths to the
+    page, which drops them onto whichever class card the cursor was over.
+
+    Wired on the `loaded` event so the document exists. Fails quietly if the
+    binding isn't available — click-to-pick still covers adding files.
     """
     try:
         from webview.dom import DOMEventHandler
@@ -61,9 +66,10 @@ def _wire_native_drag_drop(window, api: Api) -> None:
 
                 window.evaluate_js(f"window.onFilesDropped({json.dumps(paths)})")
 
-        # prevent_default lets the drop reach our handler instead of navigating.
-        window.dom.document.events.drop += DOMEventHandler(on_drop, prevent_default=True)
-        window.dom.document.events.dragover += DOMEventHandler(lambda e: None, prevent_default=True)
+        # dragover must preventDefault or the browser refuses the drop; the drop
+        # listener is what makes pywebview resolve the real paths.
+        window.dom.document.on("dragover", DOMEventHandler(lambda e: None, prevent_default=True))
+        window.dom.document.on("drop", DOMEventHandler(on_drop, prevent_default=True))
     except Exception:
         pass
 
@@ -88,14 +94,15 @@ def main() -> int:
     # GUI_DEBUG=1 opens devtools (F12) so JS errors are visible while iterating.
     debug = os.environ.get("GUI_DEBUG") == "1"
 
-    # Native drag-from-Explorer is opt-in (GUI_DRAGDROP=1): its pywebview DOM
-    # wiring is fragile and untested on this machine, and click-to-pick already
-    # covers adding files. Enable it only once the base app is confirmed stable.
-    startup = None
-    if os.environ.get("GUI_DRAGDROP") == "1":
-        startup = lambda: _wire_native_drag_drop(window, api)  # noqa: E731
+    # Wire native drag-and-drop once the page has loaded (the document must
+    # exist before we attach the DOM handler). GUI_NODND=1 disables it.
+    if os.environ.get("GUI_NODND") != "1":
+        try:
+            window.events.loaded += lambda: _wire_native_drag_drop(window)
+        except Exception:
+            pass
 
-    webview.start(startup, debug=debug)
+    webview.start(debug=debug)
     return 0
 
 

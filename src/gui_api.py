@@ -155,8 +155,10 @@ class Api:
 
         if self._window is None:
             return []
+        open_dialog = getattr(webview, "FileDialog", None)
+        dialog_type = open_dialog.OPEN if open_dialog else webview.OPEN_DIALOG
         result = self._window.create_file_dialog(
-            webview.OPEN_DIALOG,
+            dialog_type,
             allow_multiple=True,
             file_types=("אבחונים (*.pdf;*.jpg;*.jpeg;*.png)", "כל הקבצים (*.*)"),
         )
