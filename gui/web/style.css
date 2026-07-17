@@ -39,6 +39,12 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* The `hidden` HTML attribute must win over any element's `display` rule.
+   Without this, a rule like `.modal-scrim { display: grid }` overrides the
+   browser's `[hidden] { display: none }`, so setting element.hidden = true
+   never actually hides the modal/drawer (they stay on screen). */
+[hidden] { display: none !important; }
+
 html, body { height: 100%; }
 
 body {
