@@ -229,6 +229,7 @@ output/
 # `-o` can point anywhere, so also ignore the generated artefacts by name —
 # a stray output folder can't leak a table just because it isn't listed here.
 *.records.json
+דוח בקרה*.html
 
 # No Word document belongs in this source repo — every .docx here is either a
 # generated class table or a sample, both of which are student data. A blanket

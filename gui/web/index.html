@@ -9,7 +9,7 @@
   <!-- Inline favicon so the webview doesn't request /favicon.ico (harmless 404). -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232f8f7f'/%3E%3Cpath d='M7 12.5l3 3 6-6.5' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <!-- ?v bumps on every UI change so a cached copy is never reused. -->
-  <link rel="stylesheet" href="style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=12" />
 </head>
 <body>
   <div class="app">
@@ -71,6 +71,7 @@
     <div class="log" id="log"></div>
     <div class="results" id="results" hidden></div>
     <div class="drawer-foot" id="drawerFoot" hidden>
+      <button type="button" class="btn btn-outline" id="openReport" hidden><span class="ico">🔎</span> דו"ח בקרה</button>
       <button type="button" class="btn btn-primary" id="openOutput2"><span class="ico">📂</span> פתח את הדוחות</button>
     </div>
   </aside>
@@ -113,6 +114,6 @@
 
   <div class="toast" id="toast" hidden></div>
 
-  <script src="app.js?v=11"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>

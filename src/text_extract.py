@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -18,6 +19,15 @@ import fitz  # PyMuPDF
 OCR_LIB_ROOT = Path(r"C:\work\common_infrastructures")
 if str(OCR_LIB_ROOT) not in sys.path:
     sys.path.insert(0, str(OCR_LIB_ROOT))
+
+
+@dataclass
+class ExtractResult:
+    """Per-page text plus how it was obtained (for the review report)."""
+
+    pages: list[str]
+    ocr_pages: int      # pages that had no text layer and went through OCR
+    total_pages: int
 
 
 class PageTextExtractor:
@@ -48,23 +58,35 @@ class PageTextExtractor:
         digest = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:16]
         return self.cache_dir / f"{digest}.json"
 
-    def _load_cached(self, pdf_path: Path) -> list[str] | None:
+    def _load_cached(self, pdf_path: Path) -> ExtractResult | None:
         if not self.use_cache:
             return None
         path = self._cache_path(pdf_path)
         if not path.exists():
             return None
         try:
-            return json.loads(path.read_text(encoding="utf-8"))["pages"]
+            data = json.loads(path.read_text(encoding="utf-8"))
+            pages = data["pages"]
         except (json.JSONDecodeError, KeyError, OSError):
             return None
+        # Older cache entries predate the OCR counters; default gracefully.
+        return ExtractResult(
+            pages=pages,
+            ocr_pages=data.get("ocr_pages", 0),
+            total_pages=data.get("total_pages", len(pages)),
+        )
 
-    def _store_cached(self, pdf_path: Path, pages: list[str]) -> None:
+    def _store_cached(self, pdf_path: Path, result: ExtractResult) -> None:
         if not self.use_cache:
             return
         path = self._cache_path(pdf_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"source": str(pdf_path), "pages": pages}
+        payload = {
+            "source": str(pdf_path),
+            "pages": result.pages,
+            "ocr_pages": result.ocr_pages,
+            "total_pages": result.total_pages,
+        }
         path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
     # ------------------------------------------------------------------
@@ -104,7 +126,7 @@ class PageTextExtractor:
     # Public API
     # ------------------------------------------------------------------
 
-    def extract(self, pdf_path: Path, log=print) -> list[str]:
+    def extract(self, pdf_path: Path, log=print) -> ExtractResult:
         cached = self._load_cached(pdf_path)
         if cached is not None:
             return cached
@@ -116,14 +138,17 @@ class PageTextExtractor:
             doc.close()
 
         weak = [i for i, text in enumerate(pages) if len(text.strip()) < self.min_native_chars]
+        ocr_pages = 0
         if weak and self.ocr_engine != "none":
             where = " (local C:\\T_OCR)" if self.ocr_engine == "tesseract" else ""
             log(f"      {self.ocr_engine} OCR{where} on {len(weak)} image-only page(s)")
             try:
                 for index, text in self._ocr_pages(pdf_path, weak, log=log).items():
                     pages[index] = text
+                ocr_pages = len(weak)  # these pages had no text layer and were OCR'd
             except Exception as exc:  # OCR is best-effort; native text still stands
                 log(f"      OCR failed ({exc}); continuing with the text layer only")
 
-        self._store_cached(pdf_path, pages)
-        return pages
+        result = ExtractResult(pages=pages, ocr_pages=ocr_pages, total_pages=len(pages))
+        self._store_cached(pdf_path, result)
+        return result

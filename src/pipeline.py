@@ -3,16 +3,29 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import quality, review_report
 from .config import Settings, resolve_api_key
 from .console import log as console_log
 from .docx_writer import build_class_document
 from .extractor import CallStats, RecordExtractor, StudentRecord
 from .relevance import build_excerpt, select_relevant_pages
+from .review_report import ClassReview, StudentReview
 from .teachers import resolve_teacher
 from .text_extract import PageTextExtractor
+
+
+@dataclass
+class _StudentOutcome:
+    record: StudentRecord
+    stats: CallStats
+    excerpt: str
+    source_path: Path
+    ocr_pages: int
+    total_pages: int
 
 
 @dataclass
@@ -23,6 +36,7 @@ class ClassResult:
     # {name: count} for children with more than one diagnostic file — kept as
     # separate rows for the teacher to merge by hand.
     duplicate_names: dict[str, int] = field(default_factory=dict)
+    class_review: ClassReview | None = None
     docx_path: Path | None = None
     json_path: Path | None = None
 
@@ -104,6 +118,7 @@ class Pipeline:
         self.settings = settings
         self.log = log
         self.totals = RunTotals()
+        self.report_path: Path | None = None
         api_key = resolve_api_key()
         self.text_extractor = PageTextExtractor(
             ocr_engine=settings.ocr_engine,
@@ -124,10 +139,9 @@ class Pipeline:
             folders = [f for f in folders if f.name in wanted]
         return folders
 
-    def _student_record(
-        self, pdf_path: Path, folder_name: str
-    ) -> tuple[StudentRecord, CallStats]:
-        pages = self.text_extractor.extract(pdf_path, log=self.log)
+    def _student_record(self, pdf_path: Path, folder_name: str) -> _StudentOutcome:
+        extracted = self.text_extractor.extract(pdf_path, log=self.log)
+        pages = extracted.pages
         indices = select_relevant_pages(pages, max_pages=self.settings.max_pages)
         excerpt = build_excerpt(pages, indices)
         record, stats = self.record_extractor.extract(
@@ -144,40 +158,96 @@ class Pipeline:
                 f"{stats.input_tokens:,} in / {stats.output_tokens:,} out"
                 + (f", {stats.cache_read_tokens:,} cached" if stats.cache_read_tokens else "")
             )
-        return record, stats
+        return _StudentOutcome(
+            record=record,
+            stats=stats,
+            excerpt=excerpt,
+            source_path=pdf_path,
+            ocr_pages=extracted.ocr_pages,
+            total_pages=extracted.total_pages,
+        )
+
+    def _build_review(
+        self,
+        class_name: str,
+        teacher: str | None,
+        outcomes: list[_StudentOutcome],
+        failures: list[tuple[str, str]],
+    ) -> ClassReview:
+        reviews: list[StudentReview] = []
+        for o in outcomes:
+            rec = o.record
+            q = quality.assess(rec, o.excerpt, o.ocr_pages, o.total_pages)
+            reviews.append(
+                StudentReview(
+                    student_name=rec.student_name,
+                    filename=o.source_path.name,
+                    source_path=str(o.source_path),
+                    confidence=rec.confidence,
+                    reasons=q.reasons,
+                    difficulties=rec.difficulties,
+                    accommodations=rec.accommodations,
+                    diagnosis_type=rec.diagnosis_type,
+                    # Only carry a source snippet for flagged rows (keeps the
+                    # report lean and avoids copying clean students' text around).
+                    snippet=self._snippet(o.excerpt) if q.needs_review else "",
+                    needs_review=q.needs_review,
+                )
+            )
+        return ClassReview(
+            class_name=class_name, teacher=teacher, reviews=reviews, failures=failures
+        )
+
+    @staticmethod
+    def _snippet(excerpt: str, limit: int = 350) -> str:
+        text = re.sub(r"=====.*?=====", " ", excerpt)  # drop page markers
+        text = " ".join(text.split())
+        return text[:limit] + ("…" if len(text) > limit else "")
 
     def process_class(self, folder: Path, write_docx: bool = True) -> ClassResult:
         pdfs = sorted(p for p in folder.glob("*.pdf") if not p.name.startswith("~$"))
         self.log(f"\n[{folder.name}] {len(pdfs)} diagnostic file(s)")
 
-        records: list[StudentRecord] = []
+        outcomes: list[_StudentOutcome] = []
         failures: list[tuple[str, str]] = []
 
         for pdf_path in pdfs:
             self.log(f"   - {pdf_path.name}")
             try:
-                record, stats = self._student_record(pdf_path, folder.name)
+                outcome = self._student_record(pdf_path, folder.name)
             except Exception as exc:
                 self.log(f"      FAILED: {exc}")
                 failures.append((pdf_path.name, str(exc)))
                 continue
-            self.totals.add(stats)
-            records.append(record)
+            self.totals.add(outcome.stats)
+            outcomes.append(outcome)
+            record = outcome.record
             note = ""
             if record.missing_info:
                 note = f"  (missing: {', '.join(record.missing_info)})"
             self.log(f"      -> {record.student_name} [{record.confidence}]{note}")
 
         # Keep same-child rows adjacent so multiple diagnostics are easy to merge.
-        records, duplicates = group_by_student(records)
+        records, duplicates = group_by_student([o.record for o in outcomes])
         for name, count in duplicates.items():
             self.log(f"   ! {count} diagnostic files for {name} — adjacent rows, merge by hand")
+
+        # Reorder outcomes to match the grouped records (by identity) so the
+        # review report and the table stay in lockstep.
+        by_id = {id(o.record): o for o in outcomes}
+        ordered = [by_id[id(r)] for r in records]
+
+        teacher = resolve_teacher(folder, self.settings.teachers)
+        class_review = self._build_review(folder.name, teacher, ordered, failures)
+        for r in class_review.flagged:
+            self.log(f"   ⚠ {r.student_name} — לבדיקה: {'; '.join(r.reasons)}")
 
         result = ClassResult(
             folder_name=folder.name,
             records=records,
             failures=failures,
             duplicate_names=duplicates,
+            class_review=class_review,
         )
 
         # ".records.json" rather than plain ".json" so the extracted student data
@@ -199,7 +269,6 @@ class Pipeline:
         result.json_path = json_path
 
         if write_docx and records:
-            teacher = resolve_teacher(folder, self.settings.teachers)
             if not teacher:
                 self.log(
                     "      no teacher name — add teacher_name.txt to "
@@ -223,4 +292,18 @@ class Pipeline:
                 f"No class folders found under {self.settings.input_dir}. "
                 "Expected one sub-folder per class (e.g. א2)."
             )
-        return [self.process_class(folder, write_docx=write_docx) for folder in folders]
+        results = [self.process_class(folder, write_docx=write_docx) for folder in folders]
+
+        # One combined review report per run, covering every class.
+        class_reviews = [r.class_review for r in results if r.class_review]
+        if class_reviews:
+            self.report_path = review_report.write_report(
+                class_reviews, self.settings.year, self.settings.output_dir
+            )
+            flagged = sum(len(cr.flagged) for cr in class_reviews)
+            self.log(
+                f"\nדו\"ח בקרה: {self.report_path.name} "
+                f"({flagged} תלמידים לבדיקה)" if flagged else
+                f"\nדו\"ח בקרה: {self.report_path.name} (הכול נחזה בביטחון גבוה)"
+            )
+        return results

@@ -6,7 +6,7 @@
 
 // Bump on every UI change. Shown in the header so we can confirm, from a
 // screenshot, exactly which version is running (stale files are the #1 gotcha).
-const BUILD = 11;
+const BUILD = 12;
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const api = () => window.pywebview.api;
@@ -180,6 +180,7 @@ function bindChrome() {
   $('#className').addEventListener('keydown', e => { if (e.key === 'Enter') doCreate(); if (e.key === 'Escape') closeModal(); });
   $('#openOutput').addEventListener('click', () => api().open_output_folder());
   $('#openOutput2').addEventListener('click', () => api().open_output_folder());
+  $('#openReport').addEventListener('click', () => api().open_review_report());
   $('#generate').addEventListener('click', generate);
   $('#drawerClose').addEventListener('click', closeDrawer);
   // API key dialog
@@ -376,6 +377,7 @@ window.onDone = function (res) {
   }
   $('#drawerTitle').textContent = 'הדוחות מוכנים ✓';
   renderResults(res);
+  $('#openReport').hidden = !res.has_report;
   $('#drawerFoot').hidden = false;
   refresh();
 };
@@ -383,6 +385,12 @@ window.onDone = function (res) {
 function renderResults(res) {
   const box = $('#results');
   box.innerHTML = '';
+  const totalFlagged = (res.classes || []).reduce((n, c) => n + (c.flagged ? c.flagged.length : 0), 0);
+  if (totalFlagged) {
+    const hint = el('div', 'results-hint');
+    hint.textContent = `${totalFlagged} תלמידים מסומנים לבדיקה — פרטים בדו"ח הבקרה.`;
+    box.appendChild(hint);
+  }
   (res.classes || []).forEach(c => {
     const card = el('div', 'res-card');
     let html = `<h3>כיתה ${esc(c.class)} <span style="color:var(--ink-faint);font-weight:600">· ${c.students} תלמידים</span></h3>`;
@@ -390,13 +398,23 @@ function renderResults(res) {
     (Object.entries(c.merge || {})).forEach(([name, n]) => {
       html += `<div class="flag merge">🔗 ${n} אבחונים ל-${esc(name)} — שורות סמוכות, למזג ידנית</div>`;
     });
-    if (c.review && c.review.length)
-      html += `<div class="flag review">⚠ לבדוק ידנית: ${c.review.map(esc).join('، ')}</div>`;
+    (c.flagged || []).forEach(f => {
+      const reasons = (f.reasons || []).map(esc).join(' · ');
+      html += `<div class="flag review">
+        <div class="flag-body"><b>${esc(f.name)}</b> — ${reasons}</div>
+        <button type="button" class="btn btn-ghost btn-mini open-src"
+                data-class="${esc(c.class)}" data-file="${esc(f.file)}">📄 מקור</button>
+      </div>`;
+    });
     (c.failures || []).forEach(f => {
       html += `<div class="flag fail">✕ נכשל: ${esc(f)}</div>`;
     });
     card.innerHTML = html;
     box.appendChild(card);
+  });
+  box.querySelectorAll('.open-src').forEach(btn => {
+    btn.addEventListener('click', () =>
+      api().open_source_file(btn.dataset.class, btn.dataset.file));
   });
   box.hidden = false;
 }

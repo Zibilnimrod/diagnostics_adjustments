@@ -264,6 +264,32 @@ class Api:
         folder = self._paths.diagnostics_root / (safe or "")
         return self._open(folder) if safe and folder.is_dir() else {"ok": False}
 
+    def open_review_report(self) -> dict:
+        path = getattr(self, "_report_path", None)
+        if path and Path(path).is_file():
+            return self._open_file(Path(path))
+        return {"ok": False, "error": "עדיין לא נוצר דו\"ח בקרה"}
+
+    def open_source_file(self, class_name: str, filename: str) -> dict:
+        safe = _safe_class_name(class_name)
+        folder = self._paths.diagnostics_root / (safe or "")
+        target = folder / Path(filename).name  # basename only — no traversal
+        if not safe or not target.is_file() or target.parent != folder:
+            return {"ok": False, "error": "קובץ לא נמצא"}
+        return self._open_file(target)
+
+    def _open_file(self, path: Path) -> dict:
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(path))  # noqa: S606
+            elif sys.platform == "darwin":
+                subprocess.run(["open", str(path)], check=False)
+            else:
+                subprocess.run(["xdg-open", str(path)], check=False)
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     def _open(self, path: Path) -> dict:
         try:
             path.mkdir(parents=True, exist_ok=True)
@@ -369,18 +395,24 @@ class Api:
             pipeline = Pipeline(self._settings, log=lambda m: self._emit("onProgress", {"type": "log", "line": m}))
             results = pipeline.run(write_docx=True)
 
+            # Remember the review report so open_review_report() can find it.
+            self._report_path = str(pipeline.report_path) if pipeline.report_path else None
+
             summary = []
             for r in results:
-                review = [
-                    rec.student_name for rec in r.records
-                    if rec.confidence != "high" or rec.missing_info
-                ]
+                cr = r.class_review
+                flagged = []
+                if cr:
+                    for rv in cr.flagged:
+                        flagged.append(
+                            {"name": rv.student_name, "file": rv.filename, "reasons": rv.reasons}
+                        )
                 summary.append(
                     {
                         "class": r.folder_name,
                         "students": len(r.records),
                         "docx": r.docx_path.name if r.docx_path else None,
-                        "review": review,
+                        "flagged": flagged,          # [{name, file, reasons}]
                         "merge": r.duplicate_names,
                         "failures": [f for f, _ in r.failures],
                     }
@@ -391,6 +423,7 @@ class Api:
                     "ok": True,
                     "output": str(self._paths.output_root),
                     "totals": pipeline.totals.summary_lines(),
+                    "has_report": bool(self._report_path),
                     "classes": summary,
                 },
             )
