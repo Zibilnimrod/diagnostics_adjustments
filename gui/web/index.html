@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>טבלת התאמות — מחולל דוחות כיתתיים</title>
+  <!-- Inline favicon so the webview doesn't request /favicon.ico (harmless 404). -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232f8f7f'/%3E%3Cpath d='M7 12.5l3 3 6-6.5' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -19,7 +21,7 @@
         </div>
       </div>
       <div class="topbar-actions">
-        <button class="btn btn-ghost" id="openOutput" title="פתח את תיקיית הדוחות">
+        <button type="button" class="btn btn-ghost" id="openOutput" title="פתח את תיקיית הדוחות">
           <span class="ico">📂</span> תיקיית הדוחות
         </button>
       </div>
@@ -36,12 +38,12 @@
     </div>
 
     <footer class="actionbar">
-      <button class="btn btn-outline" id="addClass">
+      <button type="button" class="btn btn-outline" id="addClass">
         <span class="ico">➕</span> צור כיתה חדשה
       </button>
       <div class="spacer"></div>
       <div class="run-status" id="runStatus"></div>
-      <button class="btn btn-primary btn-run" id="generate">
+      <button type="button" class="btn btn-primary btn-run" id="generate">
         <span class="ico">▶</span> צור דוחות
       </button>
     </footer>
@@ -52,13 +54,13 @@
   <aside class="drawer" id="drawer" hidden aria-live="polite">
     <div class="drawer-head">
       <h2 id="drawerTitle">מפיק דוחות…</h2>
-      <button class="icon-btn" id="drawerClose" title="סגור" hidden>✕</button>
+      <button type="button" class="icon-btn" id="drawerClose" title="סגור" hidden>✕</button>
     </div>
     <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
     <div class="log" id="log"></div>
     <div class="results" id="results" hidden></div>
     <div class="drawer-foot" id="drawerFoot" hidden>
-      <button class="btn btn-primary" id="openOutput2"><span class="ico">📂</span> פתח את הדוחות</button>
+      <button type="button" class="btn btn-primary" id="openOutput2"><span class="ico">📂</span> פתח את הדוחות</button>
     </div>
   </aside>
 
@@ -70,8 +72,8 @@
       <input type="text" id="className" class="field" placeholder="שם הכיתה" autocomplete="off" maxlength="40" />
       <div class="modal-error" id="modalError" hidden></div>
       <div class="modal-actions">
-        <button class="btn btn-ghost" id="modalCancel">ביטול</button>
-        <button class="btn btn-primary" id="modalCreate">צור כיתה</button>
+        <button type="button" class="btn btn-ghost" id="modalCancel">ביטול</button>
+        <button type="button" class="btn btn-primary" id="modalCreate">צור כיתה</button>
       </div>
     </div>
   </div>
