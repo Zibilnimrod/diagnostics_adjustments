@@ -26,7 +26,7 @@ from src.gui_api import Api, GuiPaths
 BASE = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
 WEB_INDEX = BASE / "gui" / "web" / "index.html"
 
-WINDOW_TITLE = "טבלת התאמות — מחולל דוחות כיתתיים"
+WINDOW_TITLE = "  טבלת התאמות — מחולל דוחות כיתתיים לפונומורפוגית הנחמדת"
 
 
 def build_api() -> Api:
