@@ -6,7 +6,7 @@
 
 // Bump on every UI change. Shown in the header so we can confirm, from a
 // screenshot, exactly which version is running (stale files are the #1 gotcha).
-const BUILD = 10;
+const BUILD = 11;
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const api = () => window.pywebview.api;
@@ -42,6 +42,7 @@ async function init() {
   try {
     bindChrome();
     await refresh();
+    await refreshKeyStatus();
   } catch (err) {
     toast('שגיאה בטעינה: ' + (err.message || err), 'err');
   }
@@ -181,6 +182,74 @@ function bindChrome() {
   $('#openOutput2').addEventListener('click', () => api().open_output_folder());
   $('#generate').addEventListener('click', generate);
   $('#drawerClose').addEventListener('click', closeDrawer);
+  // API key dialog
+  $('#openKey').addEventListener('click', openKeyModal);
+  $('#bannerSetKey').addEventListener('click', openKeyModal);
+  $('#keyClose').addEventListener('click', () => { $('#keyScrim').hidden = true; });
+  $('#keyScrim').addEventListener('click', e => { if (e.target.id === 'keyScrim') $('#keyScrim').hidden = true; });
+  $('#keyReveal').addEventListener('click', () => {
+    const f = $('#apiKey'); f.type = f.type === 'password' ? 'text' : 'password';
+  });
+  $('#keySave').addEventListener('click', saveKey);
+  $('#keyClear').addEventListener('click', clearKey);
+  $('#apiKey').addEventListener('keydown', e => { if (e.key === 'Enter') saveKey(); });
+}
+
+// ---- API key ------------------------------------------------------------
+async function refreshKeyStatus() {
+  const s = await api().api_key_status();
+  const dot = $('#keyDot');
+  dot.className = 'key-dot ' + (s.configured ? 'ok' : 'missing');
+  dot.title = s.configured ? 'מפתח מוגדר' : 'לא הוגדר מפתח';
+  $('#keyBanner').hidden = s.configured;
+  return s;
+}
+
+function openKeyModal() {
+  $('#apiKey').value = '';
+  $('#apiKey').type = 'password';
+  const st = $('#keyStatus');
+  api().api_key_status().then(s => {
+    if (s.source === 'env') {
+      st.className = 'key-status ok';
+      st.textContent = 'מפתח מוגדר דרך משתנה סביבה (CLAUDE_API_KEY).';
+    } else if (s.source === 'saved') {
+      st.className = 'key-status ok';
+      st.textContent = 'מפתח שמור במחשב זה' + (s.scheme === 'dpapi' ? ' (מוצפן).' : '.');
+    } else {
+      st.className = 'key-status';
+      st.textContent = 'עדיין לא הוגדר מפתח.';
+    }
+  });
+  $('#keyScrim').hidden = false;
+  setTimeout(() => $('#apiKey').focus(), 30);
+}
+
+async function saveKey() {
+  const key = $('#apiKey').value.trim();
+  const st = $('#keyStatus');
+  const r = await api().save_api_key(key);
+  if (!r.ok) { st.className = 'key-status err'; st.textContent = r.error; return; }
+  st.className = 'key-status'; st.textContent = 'בודק את המפתח…';
+  const t = await api().test_api_key();
+  if (t.ok) {
+    st.className = 'key-status ok'; st.textContent = '✓ המפתח נשמר ואומת בהצלחה.';
+    toast('המפתח נשמר ואומת ✓');
+    await refreshKeyStatus();
+    setTimeout(() => { $('#keyScrim').hidden = true; }, 900);
+  } else {
+    st.className = 'key-status err';
+    st.textContent = 'נשמר, אך האימות נכשל: ' + t.error;
+    await refreshKeyStatus();
+  }
+}
+
+async function clearKey() {
+  if (!window.confirm('למחוק את המפתח השמור?')) return;
+  await api().clear_api_key();
+  $('#apiKey').value = '';
+  const st = $('#keyStatus'); st.className = 'key-status'; st.textContent = 'המפתח נמחק.';
+  await refreshKeyStatus();
 }
 
 function openModal() {
@@ -247,7 +316,14 @@ async function confirmDeleteClass(name) {
 async function generate() {
   if (running) return;
   const r = await api().generate();
-  if (!r.ok) return toast(r.error || 'לא ניתן להפעיל', 'warn');
+  if (!r.ok) {
+    if (r.error === 'no_api_key') {
+      toast('כדי להפיק דוחות צריך מפתח API', 'warn');
+      openKeyModal();
+      return;
+    }
+    return toast(r.error || 'לא ניתן להפעיל', 'warn');
+  }
   running = true;
   openDrawer();
 }

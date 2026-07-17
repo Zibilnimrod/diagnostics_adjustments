@@ -76,6 +76,27 @@ body {
 }
 .brand-text h1 { font-size: 21px; font-weight: 700; letter-spacing: -.2px; }
 .build { font-size: 11px; font-weight: 600; color: var(--ink-faint); vertical-align: middle; }
+
+/* API-key status dot on the key button */
+.key-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-inline-start: 4px; background: var(--ink-faint); }
+.key-dot.ok { background: var(--green); }
+.key-dot.missing { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-tint); }
+
+/* "no API key" banner */
+.banner {
+  display: flex; align-items: center; gap: 14px; justify-content: center;
+  padding: 10px 20px; background: var(--amber-tint); color: var(--amber);
+  border-bottom: 1px solid var(--line); font-size: 14px;
+}
+
+/* key dialog */
+.modal-wide { width: min(460px, 92vw); }
+.key-input-row { display: flex; gap: 8px; align-items: center; }
+.key-field { flex: 1; font-size: 14px; text-align: left; font-family: ui-monospace, "Consolas", monospace; }
+.key-status { font-size: 13px; margin-top: 12px; min-height: 18px; color: var(--ink-soft); }
+.key-status.ok { color: var(--green-deep); }
+.key-status.err { color: var(--rose); }
+.modal-actions .btn { flex: 1; }
 .brand-text p { font-size: 13px; color: var(--ink-soft); }
 
 /* ---- board ---- */

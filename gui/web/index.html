@@ -9,7 +9,7 @@
   <!-- Inline favicon so the webview doesn't request /favicon.ico (harmless 404). -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232f8f7f'/%3E%3Cpath d='M7 12.5l3 3 6-6.5' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <!-- ?v bumps on every UI change so a cached copy is never reused. -->
-  <link rel="stylesheet" href="style.css?v=10" />
+  <link rel="stylesheet" href="style.css?v=11" />
 </head>
 <body>
   <div class="app">
@@ -24,11 +24,19 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <button type="button" class="btn btn-ghost" id="openKey" title="הגדרת מפתח API">
+          <span class="ico">🔑</span> מפתח API <span class="key-dot" id="keyDot"></span>
+        </button>
         <button type="button" class="btn btn-ghost" id="openOutput" title="פתח את תיקיית הדוחות">
           <span class="ico">📂</span> תיקיית הדוחות
         </button>
       </div>
     </header>
+
+    <div class="banner" id="keyBanner" hidden>
+      <span>⚠ כדי להפיק דוחות צריך מפתח API של Claude.</span>
+      <button type="button" class="btn btn-primary btn-mini" id="bannerSetKey">הגדרת מפתח</button>
+    </div>
 
     <main class="board" id="board">
       <!-- class cards injected here -->
@@ -82,8 +90,29 @@
     </div>
   </div>
 
+  <!-- API key dialog -->
+  <div class="modal-scrim" id="keyScrim" hidden>
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="keyTitle">
+      <h2 id="keyTitle">מפתח API של Claude</h2>
+      <p class="modal-hint">
+        המפתח נשמר במחשב זה בלבד, מוצפן לפי חשבון המשתמש (DPAPI). ניתן להשיג מפתח ב-console.anthropic.com.
+      </p>
+      <div class="key-input-row">
+        <input type="password" id="apiKey" class="field key-field" dir="ltr"
+               aria-label="מפתח API" placeholder="sk-ant-..." autocomplete="off" spellcheck="false" />
+        <button type="button" class="icon-btn" id="keyReveal" title="הצג/הסתר">👁</button>
+      </div>
+      <div class="key-status" id="keyStatus"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="keyClose">סגור</button>
+        <button type="button" class="btn btn-ghost" id="keyClear">מחק מפתח</button>
+        <button type="button" class="btn btn-primary" id="keySave">שמור ובדוק</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" hidden></div>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

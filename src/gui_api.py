@@ -278,10 +278,76 @@ class Api:
             return {"ok": False, "error": str(exc)}
 
     # ------------------------------------------------------------------
+    # API key
+    # ------------------------------------------------------------------
+
+    def api_key_status(self) -> dict:
+        """Whether a key is configured and how — never returns the key itself."""
+        from .config import api_key_source
+        from . import keystore
+
+        source = api_key_source()
+        return {
+            "configured": source is not None,
+            "source": source,                    # 'env' | 'saved' | None
+            "scheme": keystore.storage_scheme(),  # 'dpapi' | 'base64' | None
+        }
+
+    def save_api_key(self, key: str) -> dict:
+        from . import keystore
+
+        key = (key or "").strip()
+        if not key:
+            return {"ok": False, "error": "לא הוזן מפתח"}
+        if not key.startswith("sk-ant-"):
+            # Anthropic keys start with sk-ant-. Warn but don't block — formats
+            # can change and a proxy setup may differ.
+            return {"ok": False, "error": "המפתח אמור להתחיל ב-sk-ant-. בדקו שהעתקתם אותו במלואו."}
+        try:
+            keystore.save_api_key(key)
+        except Exception as exc:
+            return {"ok": False, "error": f"שמירה נכשלה: {exc}"}
+        return {"ok": True, **self.api_key_status()}
+
+    def clear_api_key(self) -> dict:
+        from . import keystore
+
+        keystore.clear_api_key()
+        return {"ok": True, **self.api_key_status()}
+
+    def test_api_key(self) -> dict:
+        """Verify the configured key actually works, with one cheap call."""
+        import anthropic
+
+        from .config import resolve_api_key
+
+        try:
+            key = resolve_api_key()
+        except RuntimeError as exc:
+            return {"ok": False, "error": str(exc)}
+        try:
+            client = anthropic.Anthropic(api_key=key)
+            client.messages.count_tokens(
+                model=self._settings.model,
+                messages=[{"role": "user", "content": "x"}],
+            )
+            return {"ok": True}
+        except anthropic.AuthenticationError:
+            return {"ok": False, "error": "המפתח אינו תקין (שגיאת הזדהות)"}
+        except anthropic.APIConnectionError:
+            return {"ok": False, "error": "אין חיבור לאינטרנט"}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    # ------------------------------------------------------------------
     # Report generation — runs the real pipeline in a thread.
     # ------------------------------------------------------------------
 
     def generate(self) -> dict:
+        from .config import api_key_source
+
+        if api_key_source() is None:
+            return {"ok": False, "error": "no_api_key"}  # page opens the key dialog
         if not self._busy.acquire(blocking=False):
             return {"ok": False, "error": "כבר רץ תהליך"}
         threading.Thread(target=self._generate_worker, daemon=True).start()
