@@ -15,6 +15,47 @@ pip install -r requirements.txt
 The API key is read from the `CLAUDE_API_KEY` environment variable
 (`ANTHROPIC_API_KEY` also works).
 
+## The teacher's app (GUI)
+
+For a teacher who shouldn't touch folders or the command line, there's a
+desktop app — an embedded webview window (double-click, no browser):
+
+```bash
+python gui_app.py        # or double-click run_gui.bat
+```
+
+What it does:
+
+- **Class cards** on screen (א1, ג2 …). "צור כיתה חדשה" makes one; a class that
+  already exists is refused with a message.
+- **Drag diagnostics onto a class**, or click the card to pick files. Images and
+  phone screenshots are **auto-converted to PDF** (with the phone chrome cropped
+  off), and exact duplicates are skipped automatically.
+- **Teacher name** is a field on each card — no `teacher_name.txt` to write.
+- **"צור דוחות"** runs the same pipeline as the CLI and streams progress, then
+  shows a per-class summary with the *review-by-hand* and *merge-by-hand* flags,
+  and a button to open the reports folder.
+
+It is a thin front-end over `main.py` / `src/pipeline.py` — the GUI and the CLI
+always produce identical tables. Requires `pywebview` (in `requirements.txt`)
+and the Edge WebView2 runtime, which is already present on Windows 10/11.
+
+Files: `gui_app.py` (launcher), `src/gui_api.py` (the bridge), `gui/web/`
+(the HTML/CSS/JS front-end).
+
+### Packaging to a single .exe
+
+`pywebview` apps bundle with PyInstaller. A one-file build, including the web
+assets:
+
+```bash
+pyinstaller --noconfirm --windowed --name "TavlatHatamot" ^
+  --add-data "gui/web;gui/web" gui_app.py
+```
+
+(Ship the Edge WebView2 runtime alongside, or rely on its presence on modern
+Windows.)
+
 ## Usage
 
 ```bash
@@ -108,7 +149,7 @@ persistent system setting. Use `--keep-console-font` to skip step 3.
 ### Reading direction
 
 The console also paints characters in memory order rather than applying the
-Unicode bidi algorithm, so Hebrew comes out reversed (`יאיר גולן` as `ןלוג ריאי`).
+Unicode bidi algorithm, so Hebrew comes out reversed (`דני לוי` as `יול ינד`).
 If **python-bidi** is installed, log lines are reordered to visual order on the
 way out and read correctly.
 

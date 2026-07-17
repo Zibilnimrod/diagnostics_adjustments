@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>טבלת התאמות — מחולל דוחות כיתתיים</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26"><path d="M5 3h9l5 5v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M13 3v6h6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 13h7M8 16.5h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </div>
+        <div class="brand-text">
+          <h1>טבלת התאמות</h1>
+          <p>מחולל דוחות כיתתיים מתוך אבחונים</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" id="openOutput" title="פתח את תיקיית הדוחות">
+          <span class="ico">📂</span> תיקיית הדוחות
+        </button>
+      </div>
+    </header>
+
+    <main class="board" id="board">
+      <!-- class cards injected here -->
+    </main>
+
+    <div class="empty" id="empty" hidden>
+      <div class="empty-art" aria-hidden="true">🗂️</div>
+      <h2>עדיין אין כיתות</h2>
+      <p>צרו כיתה, גררו לתוכה את קבצי האבחון, ואז לחצו «צור דוחות».</p>
+    </div>
+
+    <footer class="actionbar">
+      <button class="btn btn-outline" id="addClass">
+        <span class="ico">➕</span> צור כיתה חדשה
+      </button>
+      <div class="spacer"></div>
+      <div class="run-status" id="runStatus"></div>
+      <button class="btn btn-primary btn-run" id="generate">
+        <span class="ico">▶</span> צור דוחות
+      </button>
+    </footer>
+  </div>
+
+  <!-- progress / results drawer -->
+  <div class="drawer-scrim" id="scrim" hidden></div>
+  <aside class="drawer" id="drawer" hidden aria-live="polite">
+    <div class="drawer-head">
+      <h2 id="drawerTitle">מפיק דוחות…</h2>
+      <button class="icon-btn" id="drawerClose" title="סגור" hidden>✕</button>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="log" id="log"></div>
+    <div class="results" id="results" hidden></div>
+    <div class="drawer-foot" id="drawerFoot" hidden>
+      <button class="btn btn-primary" id="openOutput2"><span class="ico">📂</span> פתח את הדוחות</button>
+    </div>
+  </aside>
+
+  <!-- create-class dialog -->
+  <div class="modal-scrim" id="modalScrim" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <h2 id="modalTitle">כיתה חדשה</h2>
+      <p class="modal-hint">לדוגמה: א1, ג2, ד3</p>
+      <input type="text" id="className" class="field" placeholder="שם הכיתה" autocomplete="off" maxlength="40" />
+      <div class="modal-error" id="modalError" hidden></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="modalCancel">ביטול</button>
+        <button class="btn btn-primary" id="modalCreate">צור כיתה</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

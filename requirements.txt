@@ -3,6 +3,12 @@ pydantic>=2.7
 python-docx>=1.1
 PyMuPDF>=1.24
 Pillow>=10.0
+# Desktop GUI (gui_app.py). Uses the Edge WebView2 runtime already on Windows.
+# The CLI (main.py) runs without it.
+pywebview>=5.0
+# numpy: used by the GUI to auto-crop phone chrome when converting a screenshot
+# to PDF. Optional — conversion still works without cropping if it's absent.
+numpy>=1.24
 # Optional: reorders Hebrew for Windows consoles, which don't do bidi.
 # Without it the program runs fine, but console Hebrew reads reversed.
 python-bidi>=0.4.2
