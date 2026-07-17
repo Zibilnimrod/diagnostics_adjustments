@@ -1,6 +1,6 @@
 @echo off
-rem Double-click to open the טבלת התאמות report tool.
-rem Uses pythonw so no black console window appears behind the app.
+rem Launch the report tool GUI. Double-click this file to open it.
+rem pythonw hides the console window; falls back to python if absent.
 setlocal
 cd /d "%~dp0"
 

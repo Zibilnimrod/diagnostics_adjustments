@@ -11,15 +11,33 @@ let hoverClass = null;   // class card the pointer is currently over (for drops)
 let running = false;
 
 // ---- boot ---------------------------------------------------------------
+// Surface any error instead of letting the UI hang silently. A frozen-looking
+// app is almost always an uncaught error or a rejected bridge promise.
+window.addEventListener('error', e => toast('שגיאה: ' + (e.message || e.error), 'err'));
+window.addEventListener('unhandledrejection', e => {
+  const r = e.reason;
+  toast('שגיאה: ' + (r && r.message ? r.message : String(r)), 'err');
+});
+
 window.addEventListener('pywebviewready', init);
 // Fallback if the event already fired before this script ran.
 if (window.pywebview && window.pywebview.api) init();
+// Last-resort: if neither path ran within 3s, the bridge never arrived.
+setTimeout(() => {
+  if (!init.done && (!window.pywebview || !window.pywebview.api)) {
+    toast('הגשר אל התוכנה לא נטען — נסו לפתוח מחדש', 'err');
+  }
+}, 3000);
 
 async function init() {
   if (init.done) return;
   init.done = true;
-  bindChrome();
-  await refresh();
+  try {
+    bindChrome();
+    await refresh();
+  } catch (err) {
+    toast('שגיאה בטעינה: ' + (err.message || err), 'err');
+  }
 }
 
 // ---- rendering ----------------------------------------------------------

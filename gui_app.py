@@ -12,6 +12,7 @@ Package to a single .exe later with PyInstaller (see docs).
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -83,7 +84,18 @@ def main() -> int:
         text_select=False,
     )
     api._window = window
-    webview.start(lambda: _wire_native_drag_drop(window, api))
+
+    # GUI_DEBUG=1 opens devtools (F12) so JS errors are visible while iterating.
+    debug = os.environ.get("GUI_DEBUG") == "1"
+
+    # Native drag-from-Explorer is opt-in (GUI_DRAGDROP=1): its pywebview DOM
+    # wiring is fragile and untested on this machine, and click-to-pick already
+    # covers adding files. Enable it only once the base app is confirmed stable.
+    startup = None
+    if os.environ.get("GUI_DRAGDROP") == "1":
+        startup = lambda: _wire_native_drag_drop(window, api)  # noqa: E731
+
+    webview.start(startup, debug=debug)
     return 0
 
 
