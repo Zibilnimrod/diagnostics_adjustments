@@ -59,6 +59,7 @@ body {
   display: flex; align-items: center; justify-content: space-between;
   padding: 16px 24px; border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--card) 70%, transparent);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 .brand { display: flex; align-items: center; gap: 14px; }
@@ -166,6 +167,7 @@ body {
   display: flex; align-items: center; gap: 14px;
   padding: 14px 24px; border-top: 1px solid var(--line);
   background: color-mix(in srgb, var(--card) 75%, transparent);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 .actionbar .spacer { flex: 1; }
@@ -181,7 +183,8 @@ body {
 .empty h2 { color: var(--ink); font-size: 20px; }
 
 /* ---- drawer (progress / results) ---- */
-.drawer-scrim { position: fixed; inset: 0; background: rgba(30,25,18,.35); backdrop-filter: blur(2px); z-index: 40; animation: fade .2s; }
+.drawer-scrim { position: fixed; inset: 0; background: rgba(30,25,18,.35); -webkit-backdrop-filter: blur(2px);
+ backdrop-filter: blur(2px); z-index: 40; animation: fade .2s; }
 .drawer {
   position: fixed; inset-block: 0; inset-inline-start: 0; width: min(440px, 92vw);
   background: var(--card); border-inline-end: 1px solid var(--line);
@@ -216,13 +219,20 @@ body {
 .drawer-foot .btn { width: 100%; }
 
 /* ---- modal ---- */
-.modal-scrim { position: fixed; inset: 0; background: rgba(30,25,18,.4); backdrop-filter: blur(3px); display: grid; place-items: center; z-index: 50; animation: fade .2s; }
+.modal-scrim { position: fixed; inset: 0; background: rgba(30,25,18,.4); -webkit-backdrop-filter: blur(3px);
+ backdrop-filter: blur(3px); display: grid; place-items: center; z-index: 50; animation: fade .2s; }
 .modal { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 26px; width: min(380px, 90vw); animation: pop .25s cubic-bezier(.2,.9,.3,1.1); }
 .modal h2 { font-size: 19px; }
 .modal-hint { font-size: 13px; color: var(--ink-faint); margin: 4px 0 16px; }
 .field { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font: inherit; font-size: 17px; color: var(--ink); background: var(--paper); text-align: center; }
 .field:focus { outline: none; border-color: var(--green); background: var(--card); }
-.modal-error { color: var(--rose); font-size: 13px; margin-top: 10px; }
+.modal-error {
+  color: var(--rose); font-size: 13.5px; margin-top: 12px;
+  background: var(--rose-tint); border-radius: 8px; padding: 10px 12px;
+  display: flex; gap: 8px; align-items: center; animation: pop .18s;
+}
+.modal-error::before { content: "⚠"; font-size: 15px; }
+.modal-error.hint { color: var(--amber); background: var(--amber-tint); }
 .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
 .modal-actions .btn { flex: 1; }
 

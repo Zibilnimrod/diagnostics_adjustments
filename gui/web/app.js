@@ -9,6 +9,7 @@ const api = () => window.pywebview.api;
 
 let hoverClass = null;   // class card the pointer is currently over (for drops)
 let running = false;
+let classNames = new Set();  // existing class names, for live duplicate checks
 
 // ---- boot ---------------------------------------------------------------
 // Surface any error instead of letting the UI hang silently. A frozen-looking
@@ -43,6 +44,7 @@ async function init() {
 // ---- rendering ----------------------------------------------------------
 async function refresh() {
   const classes = await api().list_classes();
+  classNames = new Set(classes.map(c => c.name));
   const board = $('#board');
   board.innerHTML = '';
   $('#empty').hidden = classes.length > 0;
@@ -164,6 +166,7 @@ function bindChrome() {
   $('#modalCancel').addEventListener('click', closeModal);
   $('#modalScrim').addEventListener('click', e => { if (e.target.id === 'modalScrim') closeModal(); });
   $('#modalCreate').addEventListener('click', doCreate);
+  $('#className').addEventListener('input', liveCheckName);
   $('#className').addEventListener('keydown', e => { if (e.key === 'Enter') doCreate(); if (e.key === 'Escape') closeModal(); });
   $('#openOutput').addEventListener('click', () => api().open_output_folder());
   $('#openOutput2').addEventListener('click', () => api().open_output_folder());
@@ -172,18 +175,42 @@ function bindChrome() {
 }
 
 function openModal() {
-  $('#modalError').hidden = true;
+  const e = $('#modalError');
+  e.hidden = true;
+  e.className = 'modal-error';
+  $('#modalCreate').disabled = false;
   $('#className').value = '';
   $('#modalScrim').hidden = false;
   setTimeout(() => $('#className').focus(), 30);
 }
 function closeModal() { $('#modalScrim').hidden = true; }
 
+// Warn as the teacher types if the class already exists — before they click.
+function liveCheckName() {
+  const name = $('#className').value.trim();
+  const e = $('#modalError');
+  if (name && classNames.has(name)) {
+    e.textContent = `כיתה ${name} כבר קיימת`;
+    e.className = 'modal-error hint';
+    e.hidden = false;
+    $('#modalCreate').disabled = true;
+  } else {
+    e.hidden = true;
+    $('#modalCreate').disabled = false;
+  }
+}
+
 async function doCreate() {
   const name = $('#className').value.trim();
-  if (!name) return;
+  if (!name || classNames.has(name)) return;
   const r = await api().create_class(name);
-  if (!r.ok) { const e = $('#modalError'); e.textContent = r.error; e.hidden = false; return; }
+  if (!r.ok) {
+    const e = $('#modalError');
+    e.textContent = r.error;         // e.g. "already exists" / "invalid name"
+    e.className = 'modal-error';
+    e.hidden = false;
+    return;
+  }
   closeModal();
   await refresh();
   toast(`הכיתה «${name}» נוצרה`);
