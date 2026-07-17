@@ -69,7 +69,8 @@
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <h2 id="modalTitle">כיתה חדשה</h2>
       <p class="modal-hint">לדוגמה: א1, ג2, ד3</p>
-      <input type="text" id="className" class="field" placeholder="שם הכיתה" autocomplete="off" maxlength="40" />
+      <input type="text" id="className" name="className" class="field"
+             aria-label="שם הכיתה" placeholder="שם הכיתה" autocomplete="off" maxlength="40" />
       <div class="modal-error" id="modalError" hidden></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="modalCancel">ביטול</button>

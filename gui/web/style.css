@@ -87,6 +87,11 @@ body {
 }
 .card:hover { box-shadow: var(--shadow-lg); }
 .card.drag { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-tint), var(--shadow-lg); transform: translateY(-2px); }
+.card.flash { animation: flashRing 1.3s ease-out; }
+@keyframes flashRing {
+  0%, 100% { box-shadow: var(--shadow); }
+  20%, 60% { box-shadow: 0 0 0 3px var(--green), var(--shadow-lg); }
+}
 
 .card-head {
   display: flex; align-items: center; justify-content: space-between;

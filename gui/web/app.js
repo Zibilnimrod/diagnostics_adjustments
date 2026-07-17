@@ -65,7 +65,9 @@ function renderCard(c, index) {
     </div>
     <div class="teacher-row">
       <label>מחנכת:</label>
-      <input class="teacher-input" type="text" placeholder="שם המחנכת" value="${esc(c.teacher)}" />
+      <input class="teacher-input" type="text" name="teacher-${esc(c.name)}"
+             aria-label="שם המחנכת של כיתה ${esc(c.name)}"
+             placeholder="שם המחנכת" value="${esc(c.teacher)}" />
     </div>
     <div class="drop" title="לחצו כדי לבחור קבצים, או גררו לכאן">
       <span class="plus">＋</span>
@@ -185,35 +187,47 @@ function openModal() {
 }
 function closeModal() { $('#modalScrim').hidden = true; }
 
-// Warn as the teacher types if the class already exists — before they click.
+// Informational hint as the teacher types if the class already exists.
+// (The button stays enabled — clicking create always closes the dialog, so it
+//  can never feel stuck; a duplicate just points at the existing card.)
 function liveCheckName() {
   const name = $('#className').value.trim();
   const e = $('#modalError');
   if (name && classNames.has(name)) {
-    e.textContent = `כיתה ${name} כבר קיימת`;
+    e.textContent = `כיתה ${name} כבר קיימת — כבר מופיעה ברשימה`;
     e.className = 'modal-error hint';
     e.hidden = false;
-    $('#modalCreate').disabled = true;
   } else {
     e.hidden = true;
-    $('#modalCreate').disabled = false;
   }
 }
 
 async function doCreate() {
   const name = $('#className').value.trim();
-  if (!name || classNames.has(name)) return;
-  const r = await api().create_class(name);
-  if (!r.ok) {
-    const e = $('#modalError');
-    e.textContent = r.error;         // e.g. "already exists" / "invalid name"
-    e.className = 'modal-error';
-    e.hidden = false;
+  if (!name) return;
+
+  // Already exists → don't refuse silently; close and point at it.
+  if (classNames.has(name)) {
+    closeModal();
+    toast(`כיתה ${name} כבר קיימת`, 'warn');
+    highlightCard(name);
     return;
   }
-  closeModal();
+
+  const r = await api().create_class(name);
+  closeModal();                          // always close on a create attempt
+  if (!r.ok) { toast(r.error || 'שם כיתה לא תקין', 'warn'); return; }
   await refresh();
   toast(`הכיתה «${name}» נוצרה`);
+  highlightCard(name);
+}
+
+function highlightCard(name) {
+  const card = $(`.card[data-class="${cssEsc(name)}"]`);
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.classList.add('flash');
+  setTimeout(() => card.classList.remove('flash'), 1300);
 }
 
 async function confirmDeleteClass(name) {
