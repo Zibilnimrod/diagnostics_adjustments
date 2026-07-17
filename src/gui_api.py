@@ -56,12 +56,25 @@ def _file_hash(path: Path) -> str:
     return h.hexdigest()
 
 
+def _default_pick_dir() -> str:
+    """A predictable folder for the file picker to open at."""
+    home = Path.home()
+    for candidate in (home / "Downloads", home / "Desktop", home / "Documents", home):
+        if candidate.is_dir():
+            return str(candidate)
+    return ""
+
+
 class Api:
     def __init__(self, paths: GuiPaths, settings: Settings):
         self._paths = paths
         self._settings = settings
         self._window = None  # set by the launcher; underscore so pywebview ignores it
         self._busy = threading.Lock()
+        # Where the "add files" picker opens. Starts at a sensible place (so it
+        # never falls back to some unrelated last-browsed folder) and then
+        # follows wherever the teacher last picked from.
+        self._last_pick_dir = _default_pick_dir()
         self._paths.diagnostics_root.mkdir(parents=True, exist_ok=True)
         self._paths.output_root.mkdir(parents=True, exist_ok=True)
 
@@ -159,10 +172,14 @@ class Api:
         dialog_type = open_dialog.OPEN if open_dialog else webview.OPEN_DIALOG
         result = self._window.create_file_dialog(
             dialog_type,
+            directory=self._last_pick_dir,
             allow_multiple=True,
             file_types=("אבחונים (*.pdf;*.jpg;*.jpeg;*.png)", "כל הקבצים (*.*)"),
         )
-        return list(result or [])
+        result = list(result or [])
+        if result:  # remember this folder so the next pick starts there
+            self._last_pick_dir = str(Path(result[0]).parent)
+        return result
 
     def add_files(self, class_name: str, paths: list[str]) -> dict:
         """Copy files into a class, converting images to PDF and skipping dups.
