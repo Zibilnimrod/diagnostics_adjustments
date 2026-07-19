@@ -6,7 +6,7 @@
 
 // Bump on every UI change. Shown in the header so we can confirm, from a
 // screenshot, exactly which version is running (stale files are the #1 gotcha).
-const BUILD = 13;
+const BUILD = 14;
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const api = () => window.pywebview.api;
@@ -14,6 +14,7 @@ const api = () => window.pywebview.api;
 let hoverClass = null;   // class card the pointer is currently over (for drops)
 let running = false;
 let classNames = new Set();  // existing class names, for live duplicate checks
+let moveDrag = null;     // {cls, file} while a file chip is dragged between cards
 
 // ---- boot ---------------------------------------------------------------
 // Surface any error instead of letting the UI hang silently. A frozen-looking
@@ -57,6 +58,35 @@ async function refresh() {
   $('#empty').hidden = classes.length > 0;
   classes.forEach((c, i) => board.appendChild(renderCard(c, i)));
   $('#generate').disabled = classes.length === 0;
+  classes.forEach(c => loadThumbs(c.name));
+  refreshEstimate();
+}
+
+// "12 אבחונים · כ־7 דקות" beside the run button — learned from past runs.
+async function refreshEstimate() {
+  if (running) return;
+  try {
+    const e = await api().run_estimate();
+    const rs = $('#runStatus');
+    if (!e || !e.files) { rs.textContent = ''; return; }
+    const mins = Math.max(1, Math.round(e.seconds / 60));
+    const t = e.seconds < 75 ? 'כדקה' : `כ־${mins} דקות`;
+    rs.textContent = `${e.files} אבחונים · זמן משוער: ${t}`;
+  } catch { /* estimate is decoration; never block the UI on it */ }
+}
+
+// Page-1 thumbnails arrive lazily (cached on disk after the first render).
+async function loadThumbs(className) {
+  try {
+    const r = await api().thumbnails(className);
+    if (!r || !r.ok) return;
+    const card = $(`.card[data-class="${cssEsc(className)}"]`);
+    if (!card) return;
+    card.querySelectorAll('.file').forEach(row => {
+      const src = r.thumbs[row.dataset.file];
+      if (src) $('.fico', row).innerHTML = `<img class="fthumb" src="${src}" alt="" />`;
+    });
+  } catch { /* keep the plain icon */ }
 }
 
 function renderCard(c, index) {
@@ -108,6 +138,13 @@ function renderCard(c, index) {
   card.addEventListener('drop', e => {
     e.preventDefault();
     card.classList.remove('drag');
+    // A chip dragged from another card is an internal move — handle it here.
+    if (moveDrag && moveDrag.cls !== c.name) {
+      const m = moveDrag;
+      moveDrag = null;
+      moveFile(m.cls, m.file, c.name);
+      return;
+    }
     // Real file paths are resolved by the Python drop handler, which calls
     // window.onFilesDropped(); it routes to whichever card is under the cursor
     // (tracked via hoverClass). Nothing to do here but keep hoverClass current.
@@ -122,15 +159,29 @@ function renderFiles(card, c) {
   box.innerHTML = '';
   c.files.forEach(f => {
     const row = el('div', 'file');
+    row.dataset.file = f.name;
+    row.draggable = true;
+    row.title = 'אפשר לגרור לכיתה אחרת';
     row.innerHTML = `
-      <span class="fico">${f.is_pdf ? '📄' : '🖼'}</span>
+      <span class="fico" title="פתח את הקובץ">${f.is_pdf ? '📄' : '🖼'}</span>
       <span class="fname" title="${esc(f.name)}">${esc(f.name)}</span>
       <span class="fsize">${f.size_kb}KB</span>
       <button class="fx" title="הסר">✕</button>`;
+    $('.fico', row).addEventListener('click', () => api().open_source_file(c.name, f.name));
     $('.fx', row).addEventListener('click', async () => {
       const r = await api().remove_file(c.name, f.name);
-      if (r.ok) updateCard(r.class);
+      if (!r.ok) return toast(r.error || 'שגיאה בהסרה', 'err');
+      updateCard(r.class);
+      toast(`«${f.name}» הוסר`, '', { label: 'ביטול', fn: () => undoDelete(r.undo) });
     });
+    // Drag a chip onto another class card to reassign the diagnostic.
+    row.addEventListener('dragstart', e => {
+      moveDrag = { cls: c.name, file: f.name };
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', f.name); } catch { }
+    });
+    row.addEventListener('dragend', () => { moveDrag = null; row.classList.remove('dragging'); });
     box.appendChild(row);
   });
   $('.count', card).innerHTML = `<b>${c.count}</b> אבחונים`;
@@ -138,7 +189,22 @@ function renderFiles(card, c) {
 
 function updateCard(c) {
   const card = $(`.card[data-class="${cssEsc(c.name)}"]`);
-  if (card) renderFiles(card, c);
+  if (card) { renderFiles(card, c); loadThumbs(c.name); }
+}
+
+async function undoDelete(token) {
+  const u = await api().undo_delete(token);
+  if (!u.ok) return toast(u.error || 'השחזור נכשל', 'err');
+  await refresh();
+  toast('שוחזר ✓');
+}
+
+async function moveFile(srcCls, file, dstCls) {
+  const r = await api().move_file(srcCls, file, dstCls);
+  if (!r.ok) return toast(r.error || 'ההעברה נכשלה', 'warn');
+  updateCard(r.src);
+  updateCard(r.dst);
+  toast(`«${file}» עבר לכיתה ${dstCls}`);
 }
 
 // ---- file adding --------------------------------------------------------
@@ -151,11 +217,17 @@ async function addInto(className, paths) {
   const res = await api().add_files(className, paths);
   if (!res.ok) return toast(res.error || 'שגיאה בהוספה', 'err');
   updateCard(res.class);
+  refreshEstimate();
   const bits = [];
   if (res.added.length) bits.push(`${res.added.length} נוספו`);
   if (res.converted.length) bits.push(`${res.converted.length} תמונות הומרו ל-PDF`);
-  if (res.skipped.length) bits.push(`${res.skipped.length} דולגו (כפילויות)`);
-  toast(bits.join(' · ') || 'לא נוספו קבצים', res.skipped.length && !res.added.length ? 'warn' : '');
+  if (res.skipped.length) {
+    // Say WHY each skipped file was skipped ("already in class ג2"), not just a count.
+    const why = res.skipped.slice(0, 2).map(s => `«${s.name}» — ${s.why}`).join('\n');
+    const more = res.skipped.length > 2 ? `\nועוד ${res.skipped.length - 2}…` : '';
+    bits.push('\n' + why + more);
+  }
+  toast(bits.join(' · ') || 'לא נוספו קבצים', res.skipped.length ? 'warn' : '');
 }
 
 // pywebview exposes the real path on dropped files as pywebviewFullPath.
@@ -307,10 +379,13 @@ function highlightCard(name) {
   setTimeout(() => card.classList.remove('flash'), 1300);
 }
 
+// No confirm dialog — deleting moves the class to a trash folder, and the
+// toast offers ביטול for a few seconds. Mis-clicks are fully recoverable.
 async function confirmDeleteClass(name) {
-  if (!window.confirm(`למחוק את כיתה ${name} ואת כל הקבצים שבה?`)) return;
   const r = await api().delete_class(name);
-  if (r.ok) { await refresh(); toast(`כיתה ${name} נמחקה`); }
+  if (!r.ok) return toast(r.error || 'שגיאה במחיקה', 'err');
+  await refresh();
+  toast(`כיתה ${name} נמחקה`, 'warn', { label: 'ביטול', fn: () => undoDelete(r.undo) });
 }
 
 // ---- generate + progress drawer ----------------------------------------
@@ -335,8 +410,12 @@ function openDrawer() {
   $('#results').innerHTML = '';
   $('#drawerFoot').hidden = true;
   $('#drawerClose').hidden = true;
+  $('#checklist').hidden = true;
+  $('#checklist').innerHTML = '';
+  checkTotal = 0; checkDone = 0;
   $('#drawerTitle').textContent = 'מפיק דוחות…';
   $('#progressFill').className = 'progress-fill indeterminate';
+  $('#progressFill').style.width = '';
   $('#scrim').hidden = false;
   $('#drawer').hidden = false;
   $('#runStatus').textContent = 'מפיק דוחות…';
@@ -345,10 +424,73 @@ function closeDrawer() {
   $('#scrim').hidden = true;
   $('#drawer').hidden = true;
   $('#runStatus').textContent = '';
+  refreshEstimate();
+}
+
+// ---- live checklist: every diagnostic, pending → running → ✓ child's name --
+let checkTotal = 0, checkDone = 0;
+
+const chkKey = (cls, file) => `${cls}|${file}`;
+
+function buildChecklist(classes) {
+  const box = $('#checklist');
+  box.innerHTML = '';
+  checkTotal = 0; checkDone = 0;
+  classes.forEach(c => {
+    const head = el('div', 'chk-class');
+    head.textContent = `כיתה ${c.class}`;
+    box.appendChild(head);
+    c.files.forEach(f => {
+      checkTotal++;
+      const row = el('div', 'chk-row');
+      row.dataset.key = chkKey(c.class, f);
+      row.innerHTML = `<span class="chk-ico">•</span><span class="chk-name">${esc(f)}</span>`;
+      box.appendChild(row);
+    });
+  });
+  box.hidden = checkTotal === 0;
+  if (checkTotal) {
+    $('#progressFill').className = 'progress-fill';
+    setRunProgress();
+  }
+}
+
+function setRunProgress() {
+  $('#progressFill').style.width = `${checkTotal ? Math.max(3, 100 * checkDone / checkTotal) : 0}%`;
+  $('#runStatus').textContent = `מפיק דוחות… ${checkDone} מתוך ${checkTotal}`;
+}
+
+function markChecklist(ev) {
+  const row = $(`#checklist .chk-row[data-key="${cssEsc(chkKey(ev.class, ev.file))}"]`);
+  if (!row) return;
+  const ico = $('.chk-ico', row);
+  if (ev.type === 'file_start') {
+    row.className = 'chk-row run';
+    ico.innerHTML = '<span class="chk-spin"></span>';
+    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
+  checkDone++;
+  if (ev.ok) {
+    row.className = 'chk-row ok';
+    ico.textContent = '✓';
+    // The file resolved into a child — show who was found.
+    if (ev.student) {
+      $('.chk-name', row).textContent = ev.student;
+      $('.chk-name', row).title = ev.file;
+    }
+  } else {
+    row.className = 'chk-row fail';
+    ico.textContent = '✕';
+    row.title = ev.error || '';
+  }
+  setRunProgress();
 }
 
 window.onProgress = function (ev) {
   if (ev.type === 'log') addLogLine(ev.line);
+  else if (ev.type === 'plan') buildChecklist(ev.classes);
+  else if (ev.type === 'file_start' || ev.type === 'file_done') markChecklist(ev);
 };
 
 function addLogLine(line) {
@@ -383,8 +525,47 @@ window.onDone = function (res) {
   renderResults(res);
   $('#openReport').hidden = !res.has_report;
   $('#drawerFoot').hidden = false;
+  confetti();
   refresh();
 };
+
+// A short celebratory burst when the reports are ready. Skipped for teachers
+// who asked Windows to reduce motion.
+function confetti() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const cv = el('canvas', 'confetti');
+  document.body.appendChild(cv);
+  cv.width = innerWidth; cv.height = innerHeight;
+  const ctx = cv.getContext('2d');
+  const colors = ['#2f8f7f', '#e0a444', '#d97b6e', '#7ba7d9', '#8f6fb8', '#4bae9c'];
+  const bits = Array.from({ length: 140 }, (_, i) => ({
+    x: Math.random() * cv.width,
+    y: -20 - Math.random() * cv.height * 0.35,
+    w: 5 + Math.random() * 5,
+    c: colors[i % colors.length],
+    vx: -1.2 + Math.random() * 2.4,
+    vy: 2 + Math.random() * 3.2,
+    rot: Math.random() * Math.PI,
+    vr: -0.12 + Math.random() * 0.24,
+  }));
+  const t0 = performance.now();
+  const life = 2600;
+  (function tick() {
+    const dt = performance.now() - t0;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.globalAlpha = Math.max(0, 1 - dt / life);
+    for (const p of bits) {
+      p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.rot += p.vr;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.c;
+      ctx.fillRect(-p.w / 2, -p.w / 2, p.w, p.w * 0.6);
+      ctx.restore();
+    }
+    if (dt < life) requestAnimationFrame(tick); else cv.remove();
+  })();
+}
 
 const BAND_ICON = { green: '✓', amber: '●', red: '⚠' };
 
@@ -438,11 +619,23 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, m => ({ '
 function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
 
 let toastTimer;
-function toast(msg, kind = '') {
+function toast(msg, kind = '', action = null) {
   const t = $('#toast');
   t.textContent = msg;
+  if (action) {
+    const b = el('button', 'toast-btn');
+    b.type = 'button';
+    b.textContent = action.label;
+    b.addEventListener('click', () => {
+      t.hidden = true;
+      clearTimeout(toastTimer);
+      action.fn();
+    });
+    t.appendChild(b);
+  }
   t.className = 'toast' + (kind ? ' ' + kind : '');
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
+  // A toast carrying an undo button lingers longer, so it can actually be hit.
+  toastTimer = setTimeout(() => { t.hidden = true; }, action ? 7000 : 3200);
 }

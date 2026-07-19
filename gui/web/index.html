@@ -9,7 +9,7 @@
   <!-- Inline favicon so the webview doesn't request /favicon.ico (harmless 404). -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232f8f7f'/%3E%3Cpath d='M7 12.5l3 3 6-6.5' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <!-- ?v bumps on every UI change so a cached copy is never reused. -->
-  <link rel="stylesheet" href="style.css?v=13" />
+  <link rel="stylesheet" href="style.css?v=14" />
 </head>
 <body>
   <div class="app">
@@ -68,6 +68,7 @@
       <button type="button" class="icon-btn" id="drawerClose" title="סגור" hidden>✕</button>
     </div>
     <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="checklist" id="checklist" hidden></div>
     <div class="log" id="log"></div>
     <div class="results" id="results" hidden></div>
     <div class="drawer-foot" id="drawerFoot" hidden>
@@ -114,6 +115,6 @@
 
   <div class="toast" id="toast" hidden></div>
 
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>

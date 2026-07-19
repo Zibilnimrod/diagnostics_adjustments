@@ -114,9 +114,13 @@ class RunTotals:
 
 
 class Pipeline:
-    def __init__(self, settings: Settings, log=console_log):
+    def __init__(self, settings: Settings, log=console_log, progress=None):
         self.settings = settings
         self.log = log
+        # Optional structured-event callback (the GUI's live checklist). Events
+        # are dicts: file_start / file_done, with class + file names. The text
+        # log above stays the human-readable channel; this one is machine-read.
+        self.progress = progress or (lambda ev: None)
         self.totals = RunTotals()
         self.report_path: Path | None = None
         api_key = resolve_api_key()
@@ -215,11 +219,21 @@ class Pipeline:
 
         for pdf_path in pdfs:
             self.log(f"   - {pdf_path.name}")
+            self.progress({"type": "file_start", "class": folder.name, "file": pdf_path.name})
             try:
                 outcome = self._student_record(pdf_path, folder.name)
             except Exception as exc:
                 self.log(f"      FAILED: {exc}")
                 failures.append((pdf_path.name, str(exc)))
+                self.progress(
+                    {
+                        "type": "file_done",
+                        "class": folder.name,
+                        "file": pdf_path.name,
+                        "ok": False,
+                        "error": str(exc),
+                    }
+                )
                 continue
             self.totals.add(outcome.stats)
             outcomes.append(outcome)
@@ -228,6 +242,15 @@ class Pipeline:
             if record.missing_info:
                 note = f"  (missing: {', '.join(record.missing_info)})"
             self.log(f"      -> {record.student_name} [{record.confidence}]{note}")
+            self.progress(
+                {
+                    "type": "file_done",
+                    "class": folder.name,
+                    "file": pdf_path.name,
+                    "ok": True,
+                    "student": record.student_name,
+                }
+            )
 
         # Keep same-child rows adjacent so multiple diagnostics are easy to merge.
         records, duplicates = group_by_student([o.record for o in outcomes])

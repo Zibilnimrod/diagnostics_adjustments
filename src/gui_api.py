@@ -14,12 +14,15 @@ called as `window.pywebview.api.<method>(...)`. Methods return plain dicts/lists
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
 import os
 import shutil
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -77,6 +80,63 @@ class Api:
         self._last_pick_dir = _default_pick_dir()
         self._paths.diagnostics_root.mkdir(parents=True, exist_ok=True)
         self._paths.output_root.mkdir(parents=True, exist_ok=True)
+        self._purge_trash()
+
+    # ------------------------------------------------------------------
+    # Trash — deletes are moves into .trash so the toast can offer undo.
+    # ------------------------------------------------------------------
+
+    def _trash_root(self) -> Path:
+        # Beside (not inside) the diagnostics root, so it never shows up as a class.
+        return self._paths.diagnostics_root.parent / ".trash"
+
+    def _purge_trash(self, max_age_days: int = 7) -> None:
+        root = self._trash_root()
+        if not root.is_dir():
+            return
+        cutoff = time.time() - max_age_days * 86400
+        for entry in root.iterdir():
+            try:
+                if entry.stat().st_mtime < cutoff:
+                    shutil.rmtree(entry, ignore_errors=True)
+            except OSError:
+                pass
+
+    def _to_trash(self, kind: str, class_name: str | None, src: Path) -> str:
+        """Move a file/class-folder into the trash; return the undo token."""
+        token = str(time.time_ns())
+        entry = self._trash_root() / token
+        payload = entry / "payload"
+        payload.mkdir(parents=True)
+        shutil.move(str(src), str(payload / src.name))
+        (entry / "meta.json").write_text(
+            json.dumps({"kind": kind, "class": class_name, "name": src.name}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return token
+
+    def undo_delete(self, token: str) -> dict:
+        entry = self._trash_root() / str(token)
+        if not str(token).isdigit() or not entry.is_dir():
+            return {"ok": False, "error": "אין מה לשחזר"}
+        try:
+            meta = json.loads((entry / "meta.json").read_text(encoding="utf-8"))
+            item = entry / "payload" / meta["name"]
+            if meta["kind"] == "file":
+                folder = self._paths.diagnostics_root / meta["class"]
+                folder.mkdir(parents=True, exist_ok=True)  # class may have gone meanwhile
+                shutil.move(str(item), str(self._unique_path(folder, item.name)))
+                shutil.rmtree(entry, ignore_errors=True)
+                return {"ok": True, "class": self._class_payload(folder)}
+            # kind == "class"
+            dest = self._paths.diagnostics_root / meta["name"]
+            if dest.exists():
+                return {"ok": False, "error": f"כיתה בשם {meta['name']} כבר קיימת"}
+            shutil.move(str(item), str(dest))
+            shutil.rmtree(entry, ignore_errors=True)
+            return {"ok": True, "class": self._class_payload(dest)}
+        except Exception as exc:
+            return {"ok": False, "error": f"השחזור נכשל: {exc}"}
 
     # ------------------------------------------------------------------
     # Push progress to the page (thread-safe enough: evaluate_js queues).
@@ -142,8 +202,8 @@ class Api:
         folder = self._paths.diagnostics_root / (safe or "")
         if not safe or not folder.is_dir():
             return {"ok": False, "error": "כיתה לא נמצאה"}
-        shutil.rmtree(folder)
-        return {"ok": True}
+        token = self._to_trash("class", None, folder)
+        return {"ok": True, "undo": token}
 
     def set_teacher(self, name: str, teacher: str) -> dict:
         safe = _safe_class_name(name)
@@ -198,6 +258,14 @@ class Api:
             for p in folder.glob("*")
             if p.is_file() and p.name != "teacher_name.txt"
         }
+        # The same scan sitting in ANOTHER class is almost always a mistake
+        # (a child belongs to one class) — warn with the class name, don't add.
+        elsewhere: dict[str, tuple[str, str]] = {}
+        for other in self._paths.diagnostics_root.iterdir():
+            if other.is_dir() and other != folder:
+                for p in other.glob("*"):
+                    if p.is_file() and p.name != "teacher_name.txt":
+                        elsewhere.setdefault(_file_hash(p), (other.name, p.name))
 
         added, converted, skipped = [], [], []
         for raw in paths:
@@ -219,6 +287,11 @@ class Api:
                 if digest in existing:
                     dest.unlink()
                     skipped.append({"name": src.name, "why": f"כפילות של {existing[digest]}"})
+                    continue
+                if digest in elsewhere:
+                    cls, fname = elsewhere[digest]
+                    dest.unlink()
+                    skipped.append({"name": src.name, "why": f"כבר קיים בכיתה {cls} ({fname})"})
                     continue
                 existing[digest] = dest.name
                 added.append(dest.name)
@@ -249,8 +322,27 @@ class Api:
         target = folder / Path(filename).name  # basename only — no traversal
         if not safe or not target.is_file() or target.parent != folder:
             return {"ok": False, "error": "קובץ לא נמצא"}
-        target.unlink()
-        return {"ok": True, "class": self._class_payload(folder)}
+        token = self._to_trash("file", safe, target)
+        return {"ok": True, "class": self._class_payload(folder), "undo": token}
+
+    def move_file(self, src_class: str, filename: str, dst_class: str) -> dict:
+        """Reassign a diagnostic to another class (chip dragged between cards)."""
+        safe_src, safe_dst = _safe_class_name(src_class), _safe_class_name(dst_class)
+        src_folder = self._paths.diagnostics_root / (safe_src or "")
+        dst_folder = self._paths.diagnostics_root / (safe_dst or "")
+        target = src_folder / Path(filename).name
+        if not safe_src or not safe_dst or not dst_folder.is_dir() or not target.is_file():
+            return {"ok": False, "error": "קובץ או כיתה לא נמצאו"}
+        digest = _file_hash(target)
+        for p in dst_folder.glob("*"):
+            if p.is_file() and p.name != "teacher_name.txt" and _file_hash(p) == digest:
+                return {"ok": False, "error": f"כבר קיים בכיתה {safe_dst} ({p.name})"}
+        shutil.move(str(target), str(self._unique_path(dst_folder, target.name)))
+        return {
+            "ok": True,
+            "src": self._class_payload(src_folder),
+            "dst": self._class_payload(dst_folder),
+        }
 
     # ------------------------------------------------------------------
     # Folders
@@ -277,6 +369,55 @@ class Api:
         if not safe or not target.is_file() or target.parent != folder:
             return {"ok": False, "error": "קובץ לא נמצא"}
         return self._open_file(target)
+
+    # ------------------------------------------------------------------
+    # Thumbnails — page 1 of each PDF, cached under <class>/.thumbs
+    # ------------------------------------------------------------------
+
+    def thumbnails(self, class_name: str) -> dict:
+        """Return {filename: data-URI} of page-1 thumbnails for one class.
+
+        Rendered lazily with PyMuPDF and cached on disk keyed by size+mtime, so
+        after the first call this is just reading small PNGs back.
+        """
+        safe = _safe_class_name(class_name)
+        folder = self._paths.diagnostics_root / (safe or "")
+        if not safe or not folder.is_dir():
+            return {"ok": False, "error": "כיתה לא נמצאה"}
+
+        tdir = folder / ".thumbs"
+        thumbs: dict[str, str] = {}
+        keep: set[str] = set()
+        for p in sorted(folder.glob("*.pdf")):
+            if p.name.startswith("~$"):
+                continue
+            try:
+                st = p.stat()
+                cached = tdir / f"{p.stem}.{st.st_size}-{st.st_mtime_ns}.png"
+                if not cached.is_file():
+                    import fitz  # PyMuPDF
+
+                    tdir.mkdir(exist_ok=True)
+                    with fitz.open(p) as doc:
+                        page = doc[0]
+                        zoom = 96 / max(1.0, page.rect.width)
+                        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+                        cached.write_bytes(pix.tobytes("png"))
+                keep.add(cached.name)
+                thumbs[p.name] = "data:image/png;base64," + base64.b64encode(
+                    cached.read_bytes()
+                ).decode("ascii")
+            except Exception:
+                continue  # no thumbnail for this file; the chip keeps its icon
+        # Drop thumbnails of removed/replaced files so the cache can't grow.
+        if tdir.is_dir():
+            for f in tdir.iterdir():
+                if f.name not in keep:
+                    try:
+                        f.unlink()
+                    except OSError:
+                        pass
+        return {"ok": True, "thumbs": thumbs}
 
     def _open_file(self, path: Path) -> dict:
         try:
@@ -369,6 +510,39 @@ class Api:
     # Report generation — runs the real pipeline in a thread.
     # ------------------------------------------------------------------
 
+    _DEFAULT_SECONDS_PER_FILE = 35.0  # first-run guess; runs recalibrate it
+
+    def run_estimate(self) -> dict:
+        """How many diagnostics a run would cover and a rough duration guess.
+
+        The per-file average is learned from past runs (stored in the app's
+        settings.json), so the guess gets better the more the app is used.
+        """
+        from . import keystore
+
+        files = sum(
+            1
+            for f in self._paths.diagnostics_root.iterdir()
+            if f.is_dir()
+            for p in f.glob("*.pdf")
+            if not p.name.startswith("~$")
+        )
+        avg = float(keystore.get_pref("avg_seconds_per_file", self._DEFAULT_SECONDS_PER_FILE))
+        return {"files": files, "seconds": int(files * avg)}
+
+    def _learn_run_speed(self, elapsed: float, totals) -> None:
+        """Fold this run's pace into the stored per-file average (EMA)."""
+        from . import keystore
+
+        if totals.api_calls <= 0:
+            return  # fully-cached run says nothing about real extraction speed
+        # Cached files fly through (~2s); subtract them so the average tracks
+        # genuinely-processed files and a cached rerun can't skew it low.
+        per_file = (elapsed - 2.0 * totals.from_cache) / totals.api_calls
+        per_file = max(3.0, min(300.0, per_file))
+        old = float(keystore.get_pref("avg_seconds_per_file", self._DEFAULT_SECONDS_PER_FILE))
+        keystore.set_pref("avg_seconds_per_file", round(0.6 * old + 0.4 * per_file, 1))
+
     def generate(self) -> dict:
         from .config import api_key_source
 
@@ -392,8 +566,22 @@ class Api:
                 return
 
             self._emit("onProgress", {"type": "start"})
-            pipeline = Pipeline(self._settings, log=lambda m: self._emit("onProgress", {"type": "log", "line": m}))
+            # The full work plan up front, so the page can draw the checklist
+            # (every file, pending) before the first result arrives.
+            plan = [
+                {"class": c["name"], "files": [f["name"] for f in c["files"] if f["is_pdf"]]}
+                for c in classes
+            ]
+            self._emit("onProgress", {"type": "plan", "classes": [p for p in plan if p["files"]]})
+
+            started = time.monotonic()
+            pipeline = Pipeline(
+                self._settings,
+                log=lambda m: self._emit("onProgress", {"type": "log", "line": m}),
+                progress=lambda ev: self._emit("onProgress", ev),
+            )
             results = pipeline.run(write_docx=True)
+            self._learn_run_speed(time.monotonic() - started, pipeline.totals)
 
             # Remember the review report so open_review_report() can find it.
             self._report_path = str(pipeline.report_path) if pipeline.report_path else None

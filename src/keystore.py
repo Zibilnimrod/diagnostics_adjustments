@@ -137,3 +137,17 @@ def storage_scheme() -> str | None:
     """'dpapi' | 'base64' | None — how a saved key is protected, if any."""
     data = _read()
     return data.get("api_key_scheme") if data.get("api_key") else None
+
+
+# ---------------------------------------------------------------------------
+# Small app preferences (plain values in the same settings.json)
+# ---------------------------------------------------------------------------
+
+def get_pref(name: str, default=None):
+    return _read().get(name, default)
+
+
+def set_pref(name: str, value) -> None:
+    data = _read()
+    data[name] = value
+    _write(data)
