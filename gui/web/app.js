@@ -6,7 +6,7 @@
 
 // Bump on every UI change. Shown in the header so we can confirm, from a
 // screenshot, exactly which version is running (stale files are the #1 gotcha).
-const BUILD = 12;
+const BUILD = 13;
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const api = () => window.pywebview.api;
@@ -352,11 +352,15 @@ window.onProgress = function (ev) {
 };
 
 function addLogLine(line) {
-  const div = el('div', 'line');
   const t = String(line).trim();
+  if (!t) return;
+  // Keep the log to progress a teacher cares about; drop technical noise
+  // (page counts, token usage, cache notes). Details live in the report.
+  if (/page\(s\)|cached, no API|OCR page|in \/|tokens|Prompt cache/i.test(t)) return;
+  const div = el('div', 'line');
   if (/FAILED|שגיאה|Error/i.test(t)) div.classList.add('err');
-  else if (/!|חסר|למזג|merge|missing/i.test(t)) div.classList.add('warn');
-  else if (/->|wrote|✓/.test(t)) div.classList.add('ok');
+  else if (/⚠|!|חסר|למזג|merge|missing/i.test(t)) div.classList.add('warn');
+  else if (/->|wrote|✓|דוח/.test(t)) div.classList.add('ok');
   div.textContent = t;
   const log = $('#log');
   log.appendChild(div);
@@ -382,28 +386,37 @@ window.onDone = function (res) {
   refresh();
 };
 
+const BAND_ICON = { green: '✓', amber: '●', red: '⚠' };
+
 function renderResults(res) {
   const box = $('#results');
   box.innerHTML = '';
-  const totalFlagged = (res.classes || []).reduce((n, c) => n + (c.flagged ? c.flagged.length : 0), 0);
-  if (totalFlagged) {
-    const hint = el('div', 'results-hint');
-    hint.textContent = `${totalFlagged} תלמידים מסומנים לבדיקה — פרטים בדו"ח הבקרה.`;
-    box.appendChild(hint);
-  }
+
+  // Legend — the whole point is deciding by colour at a glance.
+  const legend = el('div', 'legend-row');
+  legend.innerHTML =
+    '<span class="lg green">🟢 תקין</span>' +
+    '<span class="lg amber">🟡 כדאי להעיף מבט</span>' +
+    '<span class="lg red">🔴 מומלץ לבדוק היטב מול הקובץ</span>';
+  box.appendChild(legend);
+
   (res.classes || []).forEach(c => {
     const card = el('div', 'res-card');
-    let html = `<h3>כיתה ${esc(c.class)} <span style="color:var(--ink-faint);font-weight:600">· ${c.students} תלמידים</span></h3>`;
+    let html = `<h3>כיתה ${esc(c.class)} <span style="color:var(--ink-faint);font-weight:600">· ${(c.students || []).length} תלמידים</span></h3>`;
     if (c.docx) html += `<div class="r-sub">${esc(c.docx)}</div>`;
     (Object.entries(c.merge || {})).forEach(([name, n]) => {
       html += `<div class="flag merge">🔗 ${n} אבחונים ל-${esc(name)} — שורות סמוכות, למזג ידנית</div>`;
     });
-    (c.flagged || []).forEach(f => {
-      const reasons = (f.reasons || []).map(esc).join(' · ');
-      html += `<div class="flag review">
-        <div class="flag-body"><b>${esc(f.name)}</b> — ${reasons}</div>
+    // Worst-first, so the rows needing attention sit at the top.
+    const students = (c.students || []).slice().sort((a, b) => a.score - b.score);
+    students.forEach(s => {
+      const reasons = (s.reasons || []).map(esc).join(' · ');
+      html += `<div class="rline band-${esc(s.band)}" ${reasons ? `title="${reasons}"` : ''}>
+        <span class="r-name">${esc(s.name)}</span>
+        <div class="ruler"><div class="ruler-mark" style="left:${Math.max(2, Math.min(98, s.score))}%"></div></div>
+        <span class="r-icon">${BAND_ICON[s.band] || ''}</span>
         <button type="button" class="btn btn-ghost btn-mini open-src"
-                data-class="${esc(c.class)}" data-file="${esc(f.file)}">📄 מקור</button>
+                data-class="${esc(c.class)}" data-file="${esc(s.file)}" title="פתח את הקובץ המקורי">📄</button>
       </div>`;
     });
     (c.failures || []).forEach(f => {

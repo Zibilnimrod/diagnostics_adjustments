@@ -26,6 +26,8 @@ class StudentReview:
     diagnosis_type: str
     snippet: str
     needs_review: bool
+    score: int = 100
+    band: str = "green"
 
 
 @dataclass

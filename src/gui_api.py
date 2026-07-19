@@ -401,18 +401,23 @@ class Api:
             summary = []
             for r in results:
                 cr = r.class_review
-                flagged = []
+                students = []
                 if cr:
-                    for rv in cr.flagged:
-                        flagged.append(
-                            {"name": rv.student_name, "file": rv.filename, "reasons": rv.reasons}
+                    for rv in cr.reviews:  # every student, for the colored bar
+                        students.append(
+                            {
+                                "name": rv.student_name,
+                                "file": rv.filename,
+                                "score": rv.score,
+                                "band": rv.band,
+                                "reasons": rv.reasons,
+                            }
                         )
                 summary.append(
                     {
                         "class": r.folder_name,
-                        "students": len(r.records),
+                        "students": students,        # [{name, file, score, band, reasons}]
                         "docx": r.docx_path.name if r.docx_path else None,
-                        "flagged": flagged,          # [{name, file, reasons}]
                         "merge": r.duplicate_names,
                         "failures": [f for f, _ in r.failures],
                     }

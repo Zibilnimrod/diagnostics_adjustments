@@ -192,6 +192,8 @@ class Pipeline:
                     # report lean and avoids copying clean students' text around).
                     snippet=self._snippet(o.excerpt) if q.needs_review else "",
                     needs_review=q.needs_review,
+                    score=q.score,
+                    band=q.band,
                 )
             )
         return ClassReview(
