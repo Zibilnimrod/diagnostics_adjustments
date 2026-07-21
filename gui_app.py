@@ -25,8 +25,49 @@ from src.gui_api import Api, GuiPaths
 # bundle; in dev they're beside this file.
 BASE = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
 WEB_INDEX = BASE / "gui" / "web" / "index.html"
+SPLASH_IMAGE = BASE / "inputs" / "SplashScreen" / "LoolaAnim.PNG"
+SPLASH_SECONDS = 8
 
 WINDOW_TITLE = "  טבלת התאמות — מחולל דוחות כיתתיים לפונומורפוגית הנחמדת"
+
+
+def _show_splash(seconds: int = SPLASH_SECONDS) -> None:
+    """Show the splash image in a frameless, centred window, then close it.
+
+    Runs before the webview window is created, so it blocks for `seconds` and
+    the app then continues as usual. Fails quietly (no splash) if the image or
+    tkinter isn't available — never a reason to stop the app from starting.
+    """
+    if not SPLASH_IMAGE.exists():
+        return
+    try:
+        import tkinter as tk
+
+        from PIL import Image, ImageTk
+
+        image = Image.open(SPLASH_IMAGE)
+        # The PNG has an alpha channel; flatten it onto white so the corners
+        # don't render as black on the Tk canvas.
+        if image.mode in ("RGBA", "LA", "P"):
+            flat = Image.new("RGB", image.size, "white")
+            image = image.convert("RGBA")
+            flat.paste(image, mask=image.split()[-1])
+            image = flat
+
+        root = tk.Tk()
+        root.overrideredirect(True)  # no title bar / borders
+        root.attributes("-topmost", True)
+        photo = ImageTk.PhotoImage(image, master=root)
+        w, h = image.size
+        x = (root.winfo_screenwidth() - w) // 2
+        y = (root.winfo_screenheight() - h) // 2
+        root.geometry(f"{w}x{h}+{x}+{y}")
+        tk.Label(root, image=photo, borderwidth=0, highlightthickness=0).pack()
+
+        root.after(int(seconds * 1000), root.destroy)
+        root.mainloop()
+    except Exception:
+        pass
 
 
 def build_api() -> Api:
@@ -78,6 +119,8 @@ def main() -> int:
     if not WEB_INDEX.exists():
         print(f"UI assets not found at {WEB_INDEX}", file=sys.stderr)
         return 1
+
+    _show_splash()
 
     api = build_api()
     window = webview.create_window(
